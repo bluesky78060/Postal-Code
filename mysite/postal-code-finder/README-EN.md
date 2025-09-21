@@ -6,11 +6,11 @@ A web application that automatically adds postal codes to Excel files by reading
 
 - **Single Address Search**: Real-time postal code search when entering addresses
 - **Excel File Processing**: Automatically add postal codes to address columns after uploading Excel files
+- **Duplicate Data Removal**: Automatically remove duplicate address data when uploading Excel files
+- **Label Printing**: A4 paper label printing in 2 columns, 9 rows layout (100x30mm, no gaps)
 - **Real-time Progress**: Real-time monitoring of file processing progress
 - **Address Autocomplete**: Address suggestions while typing
 - **Batch Processing**: Process multiple addresses at once
-- **Duplicate Removal**: Automatically remove duplicate address data
-- **Label Printing**: A4 label printing (2 columns, 9 rows, 100x30mm labels)
 
 ## 📁 Project Structure
 
@@ -27,8 +27,11 @@ postal-code-finder/
 │   ├── package.json
 │   └── .env              # Environment Variables
 ├── frontend/             # Frontend Files
-│   └── public/           # Static Files
-└── USB-Release/          # USB Distribution Files
+│   └── public/           # Static Files (HTML, CSS, JS)
+├── USB-Release/          # USB Distribution Files
+├── build-usb.bat         # USB Build Script
+├── start-windows.bat     # Windows Startup Script
+└── USB-실행방법.bat     # USB Execution Guide
 ```
 
 ## 🛠️ Installation and Setup
@@ -42,20 +45,17 @@ npm install
 
 ### 2. Environment Variables
 
-Open the `.env` file and configure your provider/keys (choose one or mix):
+Create a `.env` file and configure as follows:
 
 ```bash
-# Provider Selection: local | juso | kakao
-POSTAL_PROVIDER=local
-
-# For Local (Offline) Usage
-LOCAL_DATA_PATH=backend/data/postcodes.csv
-
-# For Juso (Korean Address Service)
+# Juso (Korean Road Name Address) API Key (Recommended)
 JUSO_API_KEY=YOUR_JUSO_CONF_KEY
 
-# For Kakao Service
-KAKAO_API_KEY=YOUR_KAKAO_REST_API_KEY_HERE
+# Server Port Configuration
+PORT=3005
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3005
 ```
 
 ### 3. Run Server
@@ -68,24 +68,16 @@ npm run dev
 npm start
 ```
 
-The server runs at `http://localhost:3001`.
+The server runs at `http://localhost:3005`.
 
-## 🔑 API Key Setup
+## 🔑 Juso API Key Setup
 
-### Juso API (Recommended)
-1. Visit [Juso Open API](https://www.juso.go.kr/openIndexPage.do)
-2. Register and apply for Road Name Address API
-3. Copy the issued authentication key to `JUSO_API_KEY` in `.env`
-
-### Kakao API (Alternative)
-1. Visit [Kakao Developers](https://developers.kakao.com)
-2. Login with Kakao account
-3. "My Applications" → "Add Application"
-4. Enter app information and create
-5. "App Settings" → "Platform" → "Register Web Platform"
-6. Register domain (e.g., http://localhost:3001)
-7. Copy REST API key from "App Settings" → "App Keys"
-8. Enter key in `.env` file
+1. Visit [Address Information Portal](https://www.juso.go.kr/addrlink/devAddrLinkRequestGuide.do)
+2. Register or login
+3. Click "Apply for Road Name Address API"
+4. Fill out and submit the application form
+5. Check the issued authentication key after approval
+6. Enter the key in `JUSO_API_KEY` in the `.env` file
 
 ## 📡 API Endpoints
 
@@ -105,29 +97,12 @@ The server runs at `http://localhost:3001`.
 ### System
 - `GET /api/health` - Server health check
 
-## 🧩 Offline (Local) Postal Code Provider
-
-- Default setting is `POSTAL_PROVIDER=local`. Works without external APIs.
-- Data file path is specified by `LOCAL_DATA_PATH`, default is `backend/data/postcodes.csv`.
-- CSV Schema:
-  - `postalCode,sido,sigungu,roadName,buildingMain,buildingSub,legalDong,jibunMain,jibunSub,fullAddress`
-- Sample data is included. For production use, download complete data from public sources (Korea Post/MOIS Road Name Address DB) and convert to the same schema.
-
-Note: Current CSV parser uses simple splitting. If fields contain commas, TSV (tab-separated) format is recommended.
-
-## 🌐 Juso (Road Name Address) Provider
-
-- Site: https://www.juso.go.kr/openIndexPage.do
-- Key Issuance: Apply for Road Name Address Open API and set the issued authentication key to `JUSO_API_KEY` in `.env`
-- Usage: `POSTAL_PROVIDER=juso`
-- Operation: Search by keyword (address) to return `zipNo` (postal code) and `roadAddr`, autocomplete and postal code reverse search are implemented based on keyword search results
-
 ## 📋 Usage
 
 ### 1. Single Address Search
 
 ```bash
-curl -X POST http://localhost:3001/api/address/search \
+curl -X POST http://localhost:3005/api/address/search \
   -H "Content-Type: application/json" \
   -d '{"address":"Seoul Gangnam-gu Teheran-ro 123"}'
 ```
@@ -135,14 +110,14 @@ curl -X POST http://localhost:3001/api/address/search \
 ### 2. Excel File Upload
 
 ```bash
-curl -X POST http://localhost:3001/api/file/upload \
+curl -X POST http://localhost:3005/api/file/upload \
   -F "file=@your-file.xlsx"
 ```
 
 ### 3. Check Processing Status
 
 ```bash
-curl http://localhost:3001/api/file/status/job_1234567890_abc
+curl http://localhost:3005/api/file/status/job_1234567890_abc
 ```
 
 ## 📝 Excel File Format
@@ -166,21 +141,21 @@ After processing:
 | John Doe | Seoul Gangnam-gu Teheran-ro 123 | 010-1234-5678 | 06159 |
 | Jane Smith | Busan Haeundae-gu Centum-ro 456 | 010-9876-5432 | 48058 |
 
-## 🏷️ Label Printing
+## 🏷️ Label Printing Feature
 
-- **A4 Paper**: 2 columns, 9 rows layout
-- **Label Size**: 100mm × 30mm with no gaps
-- **Format**: Right-aligned text in order: Address → Name → Postal Code
+- **A4 Paper**: 2 columns, 9 rows label layout
+- **Label Size**: 100mm × 30mm (no gaps between labels)
+- **Output Format**: Right-aligned text in order: Address → Name → Postal Code
 - **Honorific Options**: Add "님" or "귀하" suffix to names
+- **Print Optimization**: Accurate label positioning using browser print function
 
-## 💾 USB Distribution
+## 💾 USB Distribution Feature
 
-For users without Node.js installation, a USB-distributable version is available:
+Provides standalone executable files that can be used without Node.js installation:
 
-### Building USB Version
-
+### USB Build Method
 ```bash
-# Run the build script
+# Run on Windows
 build-usb.bat
 ```
 
@@ -189,12 +164,12 @@ build-usb.bat
 USB-Release/
 ├── 우편번호찾기.exe     # Standalone executable
 ├── public/              # Web interface files
-├── .env                 # Configuration file
+├── .env                 # Environment configuration file
 ├── 사용법.md           # User guide
 └── data/               # Sample data (optional)
 ```
 
-### Usage
+### USB Usage
 1. Copy USB-Release folder to USB drive
 2. Configure `JUSO_API_KEY` in `.env` file
 3. Run `우편번호찾기.exe` or `USB-실행방법.bat`
@@ -204,7 +179,9 @@ USB-Release/
 
 - Never expose Juso API keys to clients
 - Do not commit .env files to git
-- Check API call limits (daily 300,000 calls)
+- Check API call limits
+- Windows Firewall may require execution permission
+- Some antivirus programs may flag the executable as false positive
 
 ## 🔧 Development
 
@@ -221,7 +198,15 @@ USB-Release/
 - Axios - HTTP client
 - Helmet - Security
 - Express Rate Limit - API limiting
+- PKG - Standalone executable generation
+- Node-cron - Scheduling
+- Compression - Response compression
+
+### System Requirements
+
+- **Development Environment**: Node.js 16+, npm 8+
+- **USB Distribution**: Windows 10/11 (64-bit), minimum 2GB RAM, 100MB free space
 
 ## 📞 Contact
 
-For development-related inquiries, please register an issue.
+For development-related inquiries, please register a GitHub issue.
