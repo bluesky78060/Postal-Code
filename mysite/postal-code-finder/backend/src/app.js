@@ -167,11 +167,11 @@ function startServer(port, attempts = 0) {
     const options = { key: fs.readFileSync(SSL_KEY_PATH), cert: fs.readFileSync(SSL_CERT_PATH) };
     const server = https.createServer(options, app);
     server.on('error', onError);
-    server.listen(port, onListening);
+    server.listen(port, '0.0.0.0', onListening);
   } else {
     const server = http.createServer(app);
     server.on('error', onError);
-    server.listen(port, onListening);
+    server.listen(port, '0.0.0.0', onListening);
   }
 }
 
