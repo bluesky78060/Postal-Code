@@ -145,8 +145,9 @@
         showResult(resultDiv, `
           <h3>✅ 파일 처리 및 다운로드 완료!</h3>
           <p><strong>파일:</strong> ${file.name}</p>
-          <p><strong>처리:</strong> 최대 200개 행 처리됨</p>
+          <p><strong>처리:</strong> 최대 200개 행 처리됨 (중복 제거 포함)</p>
           <p><strong>결과:</strong> 우편번호가 추가된 엑셀 파일이 다운로드되었습니다</p>
+          <p><strong>📊 중복 주소가 자동으로 제거되었습니다</strong></p>
           <div style="margin-top:12px">
             <button class="btn" data-reset-upload>↩️ 초기화</button>
           </div>

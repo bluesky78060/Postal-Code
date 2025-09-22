@@ -283,10 +283,42 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         });
       }
 
-      // 처리할 데이터 개수 제한 (Vercel 함수 시간 제한 고려)
-      const limitedRows = rows.slice(0, 200); // 50개에서 200개로 증가
+      // 중복 제거 함수
+      function removeDuplicateRows(rows, addressColumnIndex) {
+        const seen = new Set();
+        const uniqueRows = [];
+        let duplicatesRemoved = 0;
 
-      console.log(`Excel parsed: ${headers.length} columns, ${limitedRows.length} rows`);
+        rows.forEach((row, index) => {
+          const address = row[addressColumnIndex];
+          if (!address) return;
+          
+          // 주소를 정규화 (공백, 특수문자 제거 후 비교)
+          const normalizedAddress = String(address)
+            .replace(/\s+/g, '') // 모든 공백 제거
+            .replace(/[(),\-\.]/g, '') // 특수문자 제거
+            .toLowerCase();
+          
+          if (!seen.has(normalizedAddress)) {
+            seen.add(normalizedAddress);
+            uniqueRows.push(row);
+          } else {
+            duplicatesRemoved++;
+          }
+        });
+
+        return { uniqueRows, duplicatesRemoved };
+      }
+
+      // 중복 제거 실행
+      const { uniqueRows, duplicatesRemoved } = removeDuplicateRows(rows, addressColumnIndex);
+      
+      // 처리할 데이터 개수 제한 (Vercel 함수 시간 제한 고려)
+      const limitedRows = uniqueRows.slice(0, 200);
+
+      console.log(`Excel parsed: ${headers.length} columns, ${rows.length} total rows`);
+      console.log(`Duplicates removed: ${duplicatesRemoved}, Unique rows: ${uniqueRows.length}`);
+      console.log(`Processing: ${limitedRows.length} rows (limited to 200)`);
 
       // 즉시 처리 방식으로 변경 (Vercel 서버리스 환경 대응)
       console.log('Starting immediate processing...');
@@ -300,6 +332,9 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         processed: 0,
         results: [],
         errors: [],
+        duplicatesRemoved: duplicatesRemoved,
+        originalRowCount: rows.length,
+        uniqueRowCount: uniqueRows.length,
         createdAt: new Date()
       };
 
@@ -421,8 +456,10 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
           data: {
             jobId: jobId,
             filename: req.file.originalname,
-            totalRows: limitedRows.length,
-            processed: jobData.processed,
+            originalRows: jobData.originalRowCount,
+            duplicatesRemoved: jobData.duplicatesRemoved,
+            uniqueRows: jobData.uniqueRowCount,
+            processedRows: limitedRows.length,
             successful: jobData.results.length,
             failed: jobData.errors.length,
             headers: headers,
@@ -430,7 +467,7 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
             status: 'completed',
             results: jobData.results,
             errors: jobData.errors,
-            message: `처리 완료: ${jobData.results.length}개 성공, ${jobData.errors.length}개 실패 (엑셀 생성 오류: ${excelGenError.message})`
+            message: `처리 완료: 원본 ${jobData.originalRowCount}개 → 중복제거 ${jobData.duplicatesRemoved}개 → 고유 ${jobData.uniqueRowCount}개 → 처리 ${limitedRows.length}개 (성공 ${jobData.results.length}개, 실패 ${jobData.errors.length}개) [엑셀 생성 오류: ${excelGenError.message}]`
           }
         });
       }
