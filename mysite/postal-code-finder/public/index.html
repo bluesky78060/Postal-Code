@@ -425,6 +425,24 @@
         </div>
     </div>
 
+    <div style="max-width:800px;margin:10px auto 30px auto;text-align:center;color:#666;font-size:12px">
+      <span id="deployInfo">배포 정보 확인 중...</span>
+    </div>
+
+    <script>
+      (function(){
+        fetch('/api/health').then(r=>r.json()).then(j=>{
+          try{
+            const s = j.vercel?.commitSha ? j.vercel.commitSha.substring(0,7) : 'unknown';
+            const env = j.vercel?.env || 'prod';
+            const region = j.vercel?.region || '-';
+            const ts = new Date(j.timestamp).toLocaleString();
+            document.getElementById('deployInfo').textContent = `Deploy ${s} • ${env} • ${region} • ${ts}`;
+          }catch(e){ document.getElementById('deployInfo').textContent = '배포 정보 표시 오류'; }
+        }).catch(()=>{ document.getElementById('deployInfo').textContent = '배포 정보 불러오기 실패'; });
+      })();
+    </script>
+
     <script src="/app.js"></script>
     <!-- Vercel Speed Insights (enable in Vercel dashboard) -->
     <script defer src="/_vercel/speed-insights/script.js"></script>

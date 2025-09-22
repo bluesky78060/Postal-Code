@@ -906,7 +906,15 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    vercel: {
+      commitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
+      commitRef: process.env.VERCEL_GIT_COMMIT_REF || null,
+      commitMessage: process.env.VERCEL_GIT_COMMIT_MESSAGE || null,
+      deploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
+      env: process.env.VERCEL_ENV || null,
+      region: process.env.VERCEL_REGION || null
+    }
   });
 });
 
