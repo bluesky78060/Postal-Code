@@ -268,26 +268,27 @@
                 size: A4;
                 margin: 8mm 3mm 12mm 5mm; /* top right bottom left */
             }
-            body * {
-                visibility: hidden;
-            }
-            
-            .label-sheet, .label-sheet * {
-                visibility: visible;
-            }
-            
-            .label-sheet {
-                /* 인쇄 시에는 컨테이너에 고정 크기를 주지 않고, 내부 페이지가 자연스럽게 분할되게 둠 */
-                transform: none;
-                margin: 0;
-            }
+            html, body { margin: 0; padding: 0; }
+            /* 다른 UI 요소가 레이아웃 공간을 차지하지 않도록 완전히 제거 */
+            body * { display: none !important; }
 
-            .label-page {
-                /* @page 여백을 사용할 것이므로 내부 패딩을 제거 */
-                padding: 0;
-                border: none;
-                page-break-after: always;
-                break-after: page;
+            /* 인쇄 영역만 표시 */
+            .label-sheet { 
+                display: block !important; 
+                transform: none !important; 
+                margin: 0 !important; 
+            }
+            .label-page { 
+                display: grid !important; 
+                padding: 0 !important; 
+                border: none !important; 
+                page-break-after: always; 
+                break-after: page; 
+            }
+            .label-item { 
+                display: flex !important; 
+                break-inside: avoid; 
+                page-break-inside: avoid; 
             }
         }
     </style>
