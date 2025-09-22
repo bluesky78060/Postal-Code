@@ -844,6 +844,52 @@ app.get('/api/file/label-data/:jobId', (req, res) => {
   }
 });
 
+// HWPX 다운로드: 라벨 데이터를 HWPX로 패키징하여 반환
+app.get('/api/file/hwpx/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const nameSuffix = req.query.nameSuffix || '';
+    if (!global.excelJobs || !global.excelJobs[jobId]) {
+      return res.status(404).json({ success: false, error: '작업을 찾을 수 없습니다.' });
+    }
+    const job = global.excelJobs[jobId];
+    if (job.status !== 'completed') {
+      return res.status(400).json({ success: false, error: '작업이 완료되지 않았습니다.' });
+    }
+
+    const { buildHwpxFromTemplate, detectColumns } = require('./hwpx');
+    const headers = Array.isArray(job.headers) ? job.headers : [];
+    const rows = Array.isArray(job.rows) ? job.rows : [];
+    const cols = detectColumns(headers);
+
+    // rows + results를 합쳐 최종 표시 데이터 구성
+    const items = rows.map((row, idx) => {
+      const arr = Array.isArray(row) ? row : Object.values(row || {});
+      const get = i => (i >= 0 && i < arr.length) ? String(arr[i] || '') : '';
+      let address = get(cols.address);
+      let name = get(cols.name);
+      let postalCode = get(cols.postalCode);
+      if (!postalCode) {
+        const r = job.results?.find(r => r.row === idx + 2);
+        postalCode = r?.postalCode || '';
+      }
+      if (!address) {
+        const r = job.results?.find(r => r.row === idx + 2);
+        address = r?.fullAddress || '';
+      }
+      return { address, name, postalCode };
+    });
+
+    const buf = await buildHwpxFromTemplate(items, { nameSuffix });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="labels_${jobId}.hwpx"`);
+    return res.send(buf);
+  } catch (error) {
+    console.error('HWPX build error:', error);
+    res.status(500).json({ success: false, error: 'HWPX 생성 중 오류가 발생했습니다.' });
+  }
+});
+
 // 기존 fileRoutes는 사용하지 않음
 // if (typeof fileRoutes === 'function' && fileRoutes.length < 3) {
 //   app.use('/api/file', fileRoutes);
