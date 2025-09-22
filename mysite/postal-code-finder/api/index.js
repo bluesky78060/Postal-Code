@@ -408,10 +408,26 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       try {
         const XLSX = require('xlsx');
         
+        // 기존 컬럼 중에서 중복될 수 있는 컬럼들 확인
+        const existingColumns = headers.map(h => String(h).toLowerCase());
+        const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
+        const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road'));
+        const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
+        const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+
+        // 새로 추가할 컬럼들만 선별
+        const newHeaders = [...headers];
+        if (!hasPostalCode) newHeaders.push('우편번호');
+        if (!hasFullAddress) newHeaders.push('전체주소');
+        if (!hasSido) newHeaders.push('시도');
+        if (!hasSigungu) newHeaders.push('시군구');
+
+        console.log('Original headers:', headers);
+        console.log('New headers:', newHeaders);
+        console.log('Duplicate check:', { hasPostalCode, hasFullAddress, hasSido, hasSigungu });
+
         // 결과 데이터를 엑셀 형식으로 변환
-        const resultData = [
-          [...headers, '우편번호', '전체주소', '시도', '시군구'] // 헤더에 새 컬럼 추가
-        ];
+        const resultData = [newHeaders];
 
         // 원본 데이터에 우편번호 정보 추가
         limitedRows.forEach((row, index) => {
@@ -423,10 +439,18 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
             newRow.push('');
           }
           
+          // 중복되지 않는 컬럼들만 추가
           if (result) {
-            newRow.push(result.postalCode || '', result.fullAddress || '', result.sido || '', result.sigungu || '');
+            if (!hasPostalCode) newRow.push(result.postalCode || '');
+            if (!hasFullAddress) newRow.push(result.fullAddress || '');
+            if (!hasSido) newRow.push(result.sido || '');
+            if (!hasSigungu) newRow.push(result.sigungu || '');
           } else {
-            newRow.push('', '', '', ''); // 실패한 경우 빈 값
+            // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
+            if (!hasPostalCode) newRow.push('');
+            if (!hasFullAddress) newRow.push('');
+            if (!hasSido) newRow.push('');
+            if (!hasSigungu) newRow.push('');
           }
           
           resultData.push(newRow);
@@ -644,10 +668,22 @@ app.get('/api/file/download/:jobId', (req, res) => {
       // 안전한 헤더 처리
       const safeHeaders = Array.isArray(job.headers) ? job.headers : [];
       
+      // 기존 컬럼 중에서 중복될 수 있는 컬럼들 확인
+      const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
+      const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
+      const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road'));
+      const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
+      const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+
+      // 새로 추가할 컬럼들만 선별
+      const newHeaders = [...safeHeaders];
+      if (!hasPostalCode) newHeaders.push('우편번호');
+      if (!hasFullAddress) newHeaders.push('전체주소');
+      if (!hasSido) newHeaders.push('시도');
+      if (!hasSigungu) newHeaders.push('시군구');
+      
       // 결과 데이터를 엑셀 형식으로 변환
-      const resultData = [
-        [...safeHeaders, '우편번호', '전체주소', '시도', '시군구'] // 헤더에 새 컬럼 추가
-      ];
+      const resultData = [newHeaders];
 
       // 원본 데이터에 우편번호 정보 추가
       if (Array.isArray(job.rows)) {
@@ -660,10 +696,18 @@ app.get('/api/file/download/:jobId', (req, res) => {
             newRow.push('');
           }
           
+          // 중복되지 않는 컬럼들만 추가
           if (result) {
-            newRow.push(result.postalCode || '', result.fullAddress || '', result.sido || '', result.sigungu || '');
+            if (!hasPostalCode) newRow.push(result.postalCode || '');
+            if (!hasFullAddress) newRow.push(result.fullAddress || '');
+            if (!hasSido) newRow.push(result.sido || '');
+            if (!hasSigungu) newRow.push(result.sigungu || '');
           } else {
-            newRow.push('', '', '', ''); // 실패한 경우 빈 값
+            // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
+            if (!hasPostalCode) newRow.push('');
+            if (!hasFullAddress) newRow.push('');
+            if (!hasSido) newRow.push('');
+            if (!hasSigungu) newRow.push('');
           }
           
           resultData.push(newRow);
