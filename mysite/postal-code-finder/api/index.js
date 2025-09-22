@@ -284,7 +284,7 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       }
 
       // 처리할 데이터 개수 제한 (Vercel 함수 시간 제한 고려)
-      const limitedRows = rows.slice(0, 50);
+      const limitedRows = rows.slice(0, 200); // 50개에서 200개로 증가
 
       console.log(`Excel parsed: ${headers.length} columns, ${limitedRows.length} rows`);
 
@@ -412,9 +412,9 @@ app.get('/api/file/status/:jobId', async (req, res) => {
 
           job.processed = i + 1;
           
-          // API 호출 제한을 위한 지연
+          // API 호출 제한을 위한 지연 (더 짧게)
           if (i < job.rows.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 50)); // 100ms에서 50ms로 단축
           }
         }
 
@@ -472,40 +472,70 @@ app.get('/api/file/download/:jobId', (req, res) => {
       });
     }
 
-    // 엑셀 파일 생성
-    const XLSX = require('xlsx');
-    
-    // 결과 데이터를 엑셀 형식으로 변환
-    const resultData = [
-      [...job.headers, '우편번호', '전체주소', '시도', '시군구'] // 헤더에 새 컬럼 추가
-    ];
-
-    // 원본 데이터에 우편번호 정보 추가
-    job.rows.forEach((row, index) => {
-      const result = job.results.find(r => r.row === index + 2);
-      const newRow = [...row];
+    try {
+      // 엑셀 파일 생성
+      const XLSX = require('xlsx');
       
-      if (result) {
-        newRow.push(result.postalCode, result.fullAddress, result.sido, result.sigungu);
-      } else {
-        newRow.push('', '', '', ''); // 실패한 경우 빈 값
+      console.log('Generating Excel file for jobId:', jobId);
+      console.log('Job data:', { 
+        headersLength: job.headers?.length, 
+        rowsLength: job.rows?.length, 
+        resultsLength: job.results?.length 
+      });
+      
+      // 안전한 헤더 처리
+      const safeHeaders = Array.isArray(job.headers) ? job.headers : [];
+      
+      // 결과 데이터를 엑셀 형식으로 변환
+      const resultData = [
+        [...safeHeaders, '우편번호', '전체주소', '시도', '시군구'] // 헤더에 새 컬럼 추가
+      ];
+
+      // 원본 데이터에 우편번호 정보 추가
+      if (Array.isArray(job.rows)) {
+        job.rows.forEach((row, index) => {
+          const result = job.results?.find(r => r.row === index + 2);
+          const newRow = Array.isArray(row) ? [...row] : Object.values(row || {}); // 배열이 아닌 경우 대응
+          
+          // 헤더와 행의 길이 맞춤
+          while (newRow.length < safeHeaders.length) {
+            newRow.push('');
+          }
+          
+          if (result) {
+            newRow.push(result.postalCode || '', result.fullAddress || '', result.sido || '', result.sigungu || '');
+          } else {
+            newRow.push('', '', '', ''); // 실패한 경우 빈 값
+          }
+          
+          resultData.push(newRow);
+        });
       }
-      
-      resultData.push(newRow);
-    });
 
-    // 워크북 생성
-    const ws = XLSX.utils.aoa_to_sheet(resultData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Results');
+      console.log('Result data rows:', resultData.length);
 
-    // 파일을 버퍼로 생성
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      // 워크북 생성
+      const ws = XLSX.utils.aoa_to_sheet(resultData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Results');
 
-    // 다운로드 응답
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="result_${jobId}.xlsx"`);
-    res.send(buffer);
+      // 파일을 버퍼로 생성
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      console.log('Excel buffer size:', buffer.length);
+
+      // 다운로드 응답
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="postal_result_${new Date().getTime()}.xlsx"`);
+      res.send(buffer);
+
+    } catch (excelGenError) {
+      console.error('Excel generation error:', excelGenError);
+      return res.status(500).json({
+        success: false,
+        error: '엑셀 파일 생성 중 오류가 발생했습니다: ' + excelGenError.message
+      });
+    }
 
   } catch (error) {
     console.error('Download error:', error);
