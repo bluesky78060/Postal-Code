@@ -188,59 +188,67 @@
             transform: scale(0.4);
         }
 
-        /* 단일 A4 페이지 (2열 × 9행, 100x30mm 라벨용) */
+        /* 단일 A4 페이지 (2열 × 9행, 정확한 라벨 사양) */
         .label-page {
             width: 210mm;
             height: 297mm;
             background: white;
             border: 1px solid #ccc;
-            /* 페이지 여백을 내부 패딩으로 시뮬레이션 */
-            padding: 8mm 3mm 12mm 5mm; /* top right bottom left */
+            /* 정확한 페이지 여백: 위 8mm, 아래 12mm, 왼쪽 5mm, 오른쪽 계산됨 */
+            padding: 8mm 0 12mm 5mm; /* top right bottom left */
             box-sizing: border-box;
             display: grid;
-            grid-template-columns: repeat(2, 99.5mm);
+            /* 라벨 가로 100mm, 간격 3mm를 고려한 정확한 컬럼 설정 */
+            grid-template-columns: 100mm 3mm 100mm;
+            /* 라벨 세로 30mm, 간격 없음을 고려한 정확한 행 설정 */
             grid-template-rows: repeat(9, 30mm);
-            gap: 0 3mm; /* row-gap column-gap */
-            justify-content: center;
+            gap: 0; /* 간격은 grid-template-columns/rows에서 직접 처리 */
+            justify-content: start;
+            align-content: start;
             page-break-after: always; /* 브라우저별 호환용 */
             break-after: page;
         }
 
         .label-item {
-            width: 99.5mm;
-            height: 30mm;
-            border: 0.5px solid #ddd;
-            padding: 3mm;
+            width: 100%;
+            height: 100%;
+            border: 1px solid #333;
+            padding: 4mm;
             box-sizing: border-box;
-            font-size: 10pt;
             font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-            line-height: 1.2;
-            overflow: hidden;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            text-align: right;
-        }
-
-        .label-item .address {
-            font-size: 10pt;
-            line-height: 1.2;
-            margin-bottom: 1mm;
-            color: #2c3e50;
-        }
-
-        .label-item .name {
-            font-size: 12pt;
-            font-weight: bold;
-            margin-bottom: 1mm;
-            color: #2c3e50;
+            justify-content: space-between;
+            background: white;
         }
 
         .label-item .postal-code {
-            font-size: 11pt;
-            font-weight: normal;
+            font-size: 16pt;
+            font-weight: bold;
+            text-align: left;
+            margin-bottom: 3mm;
+            color: #000;
+            letter-spacing: 2px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .label-item .address {
+            font-size: 12pt;
+            line-height: 1.4;
+            text-align: left;
+            margin-bottom: 4mm;
+            color: #000;
+            word-break: keep-all;
+            overflow-wrap: break-word;
+            flex-grow: 1;
+        }
+
+        .label-item .name {
+            font-size: 14pt;
+            font-weight: bold;
+            text-align: right;
+            color: #000;
             margin-top: auto;
-            color: #2c3e50;
         }
 
         .field-mapping {
@@ -263,10 +271,10 @@
         }
 
         @media print {
-            /* 페이지 여백 설정: 위 8mm, 아래 12mm, 왼쪽 5mm, 오른쪽 3mm */
+            /* 정확한 페이지 여백 설정 */
             @page {
                 size: A4;
-                margin: 8mm 3mm 12mm 5mm; /* top right bottom left */
+                margin: 8mm 0 12mm 5mm; /* top right bottom left - 오른쪽은 자동 계산 */
             }
             html, body { margin: 0; padding: 0; }
             /* 다른 UI 요소가 레이아웃 공간을 차지하지 않도록 완전히 제거 */

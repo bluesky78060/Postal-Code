@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-### Backend (in `backend/` directory)
+### Local Development (in `backend/` directory)
 ```bash
 npm install              # Install dependencies
 npm run dev             # Start development server with nodemon (auto-reload)
@@ -12,19 +12,28 @@ npm start               # Start production server
 npm test                # Run Jest tests (currently no tests configured)
 ```
 
-### Server Configuration
-- **Development**: Server runs on port 3001 by default (configurable via `PORT` env var)
-- **Production**: Use `PORT=3001 npm start` to specify port
-- **Environment**: Copy `.env` file and configure `KAKAO_API_KEY`
+### Vercel Deployment
+```bash
+npm install              # Install root dependencies for Vercel
+vercel dev              # Local development with Vercel serverless functions
+vercel                  # Deploy to production
+```
+
+### Environment Configuration
+- **Local Development**: Server runs on port 3001 by default (configurable via `PORT` env var)
+- **Required Variables**: `JUSO_API_KEY` (Korean postal service API key)
+- **Backend Environment**: Copy `backend/.env` file and configure environment variables
+- **Vercel Environment**: Set environment variables in Vercel dashboard
 
 ## Architecture Overview
 
 This is a postal code lookup system that processes Excel files and provides real-time address search functionality for Korean addresses.
 
-### Core Architecture
-- **Backend**: Node.js/Express API server with file upload processing
-- **Frontend**: Static HTML/CSS/JS served by Express (in `frontend/public/`)
-- **External API**: Kakao Maps API for address lookup (with Mock fallback system)
+### Core Architecture: Dual Deployment Pattern
+- **Local Development**: Traditional Node.js/Express server (`backend/src/app.js`)
+- **Production Deployment**: Vercel serverless functions (`api/index.js`)
+- **Frontend**: Static HTML/CSS/JS served from `public/` directory
+- **External API**: JUSO (Korean postal service) API for address lookup
 
 ### Key Architectural Patterns
 
@@ -34,15 +43,17 @@ This is a postal code lookup system that processes Excel files and provides real
 - `utils/` contain shared utilities (addressParser, logger)
 - Configuration centralized in `config/index.js`
 
-**2. Job Processing System**
-- In-memory job tracking with automatic cleanup (24-hour retention)
-- Asynchronous Excel file processing with real-time progress updates
-- Background cleanup scheduler runs hourly
+**2. Serverless vs Traditional Processing**
+- **Local Backend**: Uses job processing system with in-memory tracking and status polling
+- **Vercel Serverless**: Immediate processing with direct Excel file download response
+- **File Processing**: Excel files processed with smart column detection and duplicate removal
+- **Content-Type Handling**: Frontend checks response headers to handle both JSON and Excel responses
 
-**3. Mock Data Fallback**
-- When Kakao API fails (common issue: service disabled), automatically falls back to Mock data
-- Mock data includes realistic postal codes for Seoul, Busan, Daegu
-- Ensures functionality works even without valid API key
+**3. Excel Processing Intelligence**
+- **Smart Column Detection**: Prevents duplicate columns (주소, 시도, 시군구, 우편번호, 도로명주소)
+- **Automatic Deduplication**: Removes duplicate address rows using normalized comparison
+- **Column Recognition**: Supports various address column headers in Korean and English
+- **Robust Error Handling**: Graceful fallback when address resolution fails
 
 **4. Middleware Stack**
 - Request validation using express-validator
@@ -60,10 +71,10 @@ This is a postal code lookup system that processes Excel files and provides real
 5. Provides download link and cleanup after 24 hours
 
 **API Integration Strategy**:
-- Primary: Kakao Maps API for real address lookup
-- Fallback: Mock data system when API unavailable
-- Rate limiting to prevent API quota exhaustion
-- Graceful error handling with user-friendly messages
+- **Primary**: JUSO API (Korean postal service) for accurate address lookup
+- **Rate Limiting**: Built-in delays (50ms between requests) to prevent quota exhaustion
+- **Smart Parsing**: Uses addressParser utility for address normalization and component extraction
+- **Error Handling**: Graceful degradation with detailed error messages for failed lookups
 
 **Memory Management**:
 - Jobs stored in Map with automatic cleanup
@@ -74,7 +85,7 @@ This is a postal code lookup system that processes Excel files and provides real
 
 Required environment variables in `backend/.env`:
 ```bash
-KAKAO_API_KEY=your_kakao_rest_api_key_here
+JUSO_API_KEY=your_juso_api_key_here
 PORT=3001
 FRONTEND_URL=http://localhost:3001
 ```
@@ -105,15 +116,22 @@ JOB_RETENTION_TIME=86400000
 
 ## Common Issues & Solutions
 
-**Kakao API Service Disabled Error**:
-- System automatically falls back to Mock data
-- Check console logs for "⚠️ Kakao API 서비스 비활성화 - Mock 데이터로 대체"
-- Mock system provides realistic test data for development
+**Frontend JSON Parsing Errors**:
+- **Issue**: "Unexpected token 'P', "PK..." is not valid JSON" on Vercel deployment
+- **Cause**: Frontend trying to parse Excel file response as JSON
+- **Solution**: Ensure both upload functions (`uploadFile` and `processLabelFile`) check content-type headers
+- **Files to check**: `public/app.js` for proper content-type handling logic
 
 **CORS Issues**:
 - Frontend must match configured origins in CORS middleware
 - Currently configured for localhost:3001 and 127.0.0.1:3001
 - Update `config.frontendUrl` and CORS origins array if needed
+
+**Duplicate Column Creation**:
+- **Issue**: Excel output contains duplicate columns (주소, 시도, 시군구)
+- **Cause**: Smart column detection not recognizing existing columns properly
+- **Solution**: Check `hasFullAddress`, `hasSido`, `hasSigungu` logic in both `api/index.js` and backend processing
+- **Key Logic**: Only add columns that don't already exist using case-insensitive pattern matching
 
 **File Upload Validation**:
 - Excel files must have recognizable address column headers
@@ -122,8 +140,18 @@ JOB_RETENTION_TIME=86400000
 
 ## Development Notes
 
-- Server serves static files from `frontend/public/` at root path
-- All API routes prefixed with `/api/`
-- Structured logging with request IDs for debugging
-- Input validation on all endpoints with detailed error responses
-- Job cleanup runs automatically - no manual intervention needed
+### File Structure Differences
+- **Local Development**: Frontend files in `frontend/public/`, backend in `backend/src/`
+- **Vercel Deployment**: Frontend files in `public/`, serverless function in `api/index.js`
+- **Shared Logic**: Both use same JUSO API integration and Excel processing logic
+
+### Frontend File Upload Handling
+- **Two Upload Functions**: `uploadFile()` (main tab) and `processLabelFile()` (label tab)
+- **Content-Type Checking**: Both must check response headers before parsing JSON or downloading files
+- **Response Types**: JSON (with job tracking) or direct Excel file download depending on deployment
+
+### Excel Processing Features
+- **Smart Column Detection**: Automatically detects existing columns to prevent duplicates
+- **Address Normalization**: Removes spaces and special characters for duplicate detection
+- **Rate Limiting**: 50ms delay between API calls to prevent quota exhaustion
+- **Error Recovery**: Continues processing even when individual addresses fail
