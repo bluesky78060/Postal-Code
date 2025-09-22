@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>V3260 라벨 출력 (2열×9행, 100×30mm, R-align)</title>
+<style>
+  /* ===== 인쇄 규격 ===== */
+  @page { size: A4; margin: 0; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  /* ===== 설정값(필요 시 여기만 수정) ===== */
+  :root{
+    --label-w: 99.5mm;  /* 라벨 가로 (여백/가터 포함해 A4에 정확히 맞춤) */
+    --label-h: 30mm;    /* 라벨 세로 */
+
+    /* 페이지 여백 (A4 세로 210×297mm 기준) */
+    --margin-top: 8mm;
+    --margin-bottom: 12mm;
+    --margin-left: 5mm;
+    --margin-right: 3mm; /* 요구 사양: 오른쪽 3mm */
+
+    /* 라벨 간격 */
+    --row-gap: 0mm;   /* 행 간격 */
+    --col-gap: 3mm;   /* 열 간격 */
+
+    /* 배치 개수: 9행 × 2열 */
+    --rows: 9;
+    --cols: 2;
+
+    /* 미리보기 가이드 */
+    --preview-border: rgba(0,0,0,0.10);
+  }
+
+  /* ===== A4 한 장 ===== */
+  .sheet {
+    width: 210mm;   /* A4 portrait */
+    height: 297mm;
+    box-sizing: border-box;
+    page-break-after: always; break-after: page;
+
+    padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+
+    display: grid;
+    grid-template-rows: repeat(var(--rows), var(--label-h));
+    grid-template-columns: repeat(var(--cols), var(--label-w));
+    gap: var(--row-gap) var(--col-gap);
+
+    /* 화면 미리보기용 가이드(인쇄 시 거의 보이지 않음) */
+    background:
+      linear-gradient(to right, transparent calc(100% - 1px), var(--preview-border) 0) left top / calc(210mm/10) 100% repeat-x,
+      linear-gradient(to bottom, transparent calc(100% - 1px), var(--preview-border) 0) left top / 100% calc(297mm/12) repeat-y;
+  }
+
+  /* ===== 라벨 칸 ===== */
+  .label{
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 2mm 3mm;              /* 내부 여백(문구 잘림 방지) */
+    border: 0.15mm solid var(--preview-border);
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;       /* 수직 가운데 */
+    text-align: right;             /* 오른쪽 정렬 */
+    line-height: 1.25;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .addr { font-size: 10.5pt; font-weight: 600; }
+  .name { font-size: 10pt;   margin-top: 1mm; }
+  .zip  { font-size: 11pt;   margin-top: 1mm; letter-spacing: 0.5px; }
+
+  .addr, .name, .zip { overflow-wrap: anywhere; word-break: keep-all; }
+
+  /* 상단 툴바 */
+  .toolbar{
+    position: sticky; top: 0;
+    background: #ffffffcc; backdrop-filter: blur(4px);
+    border-bottom: 1px solid #e5e5e5;
+    padding: 8px 12px; display: flex; gap: 8px; align-items: center; justify-content: space-between;
+  }
+  .toolbar .left, .toolbar .right { display: flex; gap: 8px; align-items: center; }
+  input[type="file"]{ display: none; }
+  button, label[role="button"]{
+    cursor: pointer; border: 1px solid #dadada; background: #fff;
+    padding: 6px 12px; border-radius: 8px; font-size: 14px;
+  }
+  .hint{ font-size: 12px; color:#666; }
+
+  @media print {
+    .toolbar { display:none; }
+    .sheet { background: none; }
+    .label { border-color: rgba(0,0,0,0.06); }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="left">
+    <label role="button">
+      CSV 불러오기
+      <input id="csvInput" type="file" accept=".csv,text/csv" />
+    </label>
+    <button id="printBtn">인쇄(A4 세로·실제크기)</button>
+  </div>
+  <div class="right">
+    <span class="hint">CSV: 주소,이름,우편번호 · 인쇄: A4/세로, 여백 없음, 배율 100%, 머리글/바닥글 끔</span>
+  </div>
+</div>
+
+<div id="root"></div>
+
+<script>
+/* ===== 샘플 데이터 ===== */
+const sample = [
+  { address: "경상북도 봉화군 봉화읍 봉화로 165-6", name: "장남수", zip: "36234" },
+  { address: "경상북도 봉화군 봉성면 금봉로 91-102", name: "김고은", zip: "36225" },
+  { address: "경상북도 봉화군 봉화읍 안더구길 98-50", name: "김명숙", zip: "36236" },
+  { address: "경상북도 봉화군 봉화읍 안더구길 132",    name: "권강호", zip: "36236" },
+  { address: "경상북도 봉화군 봉화읍 꽃동네길 23",      name: "김명자", zip: "36236" },
+  { address: "경상북도 봉화군 봉화읍 내성로7길 53",      name: "장동근", zip: "36238" },
+  { address: "경상북도 봉화군 봉화읍 거촌로 7",          name: "김영길", zip: "36238" },
+  { address: "경상북도 봉화군 봉화읍 거수2길 6-9",       name: "변형중", zip: "36242" },
+  { address: "경상북도 봉화군 봉화읍 거수1길 17-15",     name: "신재철", zip: "36242" },
+  { address: "경상북도 봉화군 봉화읍 거수1길 12-1",      name: "김인식", zip: "36242" },
+  { address: "경상북도 봉화군 봉화읍 탑평길 35",         name: "권춘자", zip: "36241" },
+  { address: "경상북도 봉화군 봉성면 문화마을길 59",     name: "신경섭", zip: "36225" },
+  { address: "경상북도 봉화군 봉화읍 궉말길 22",          name: "권영태", zip: "36241" },
+  { address: "경상북도 봉화군 물야면 마장길 633-27",     name: "최락기", zip: "36201" },
+  { address: "경상북도 봉화군 물야면 객들길 6",           name: "전서윤", zip: "36205" },
+  { address: "경상북도 봉화군 봉성면 금봉로 393",        name: "손종근", zip: "36225" },
+  { address: "경상북도 봉화군 봉성면 꿀덩이길 8-15",     name: "이원탁", zip: "36225" },
+  { address: "경상북도 봉화군 봉성면 꿀덩이길 9-8",      name: "홍순혁", zip: "36225" },
+];
+
+/* ===== 유틸 ===== */
+function chunk(arr, size){
+  const out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out;
+}
+
+/* ===== 렌더링 ===== */
+function renderLabels(data){
+  const root = document.getElementById('root');
+  root.innerHTML = '';
+
+  const rows = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--rows')) || 9;
+  const cols = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cols')) || 2;
+  const perPage = rows * cols;
+
+  const pages = chunk(data, perPage);
+  pages.forEach(pageItems => {
+    const sheet = document.createElement('div');
+    sheet.className = 'sheet';
+
+    pageItems.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'label';
+
+      // 순서: 주소 → 이름 귀하 → 우편번호 (오른쪽 정렬)
+      const addr = document.createElement('div');
+      addr.className = 'addr';
+      addr.textContent = item.address || '';
+
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = item.name ? `${item.name} 귀하` : '';
+
+      const zip = document.createElement('div');
+      zip.className = 'zip';
+      zip.textContent = item.zip || '';
+
+      div.appendChild(addr);
+      div.appendChild(name);
+      div.appendChild(zip);
+
+      sheet.appendChild(div);
+    });
+
+    // 18칸 유지(마지막 페이지가 덜 찼을 때 빈칸 채움)
+    for(let i=pageItems.length;i<perPage;i++){
+      const empty = document.createElement('div');
+      empty.className = 'label';
+      sheet.appendChild(empty);
+    }
+
+    root.appendChild(sheet);
+  });
+}
+
+/* ===== CSV 파서: 주소,이름,우편번호 ===== */
+function parseCSV(text){
+  const lines = text.trim().split(/\r?\n/);
+  const out=[];
+  for(const line of lines){
+    const cells=[]; let cur='', inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='\"'){
+        if(inQ && line[i+1]==='\"'){ cur+='\"'; i++; }
+        else inQ=!inQ;
+      }else if(c===',' && !inQ){
+        cells.push(cur); cur='';
+      }else{ cur+=c; }
+    }
+    cells.push(cur);
+    const [address,name,zip] = cells.map(s => (s ?? '').trim());
+    if(address || name || zip) out.push({address,name,zip});
+  }
+  return out;
+}
+
+/* ===== 이벤트 ===== */
+document.getElementById('csvInput')?.addEventListener('change', (e)=>{
+  const file = e.target.files?.[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result || '');
+    const rows = parseCSV(text);
+    renderLabels(rows.length ? rows : sample);
+  };
+  reader.readAsText(file, 'utf-8');
+});
+document.getElementById('printBtn')?.addEventListener('click', ()=> window.print());
+
+/* 초기 표시 */
+renderLabels(sample);
+</script>
+</body>
+</html>
