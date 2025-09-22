@@ -6,15 +6,37 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
-// 설정 파일 가져오기
-const config = require('../backend/src/config');
+// 설정 파일 가져오기 (Vercel 환경 고려)
+let config;
+try {
+  config = require('../backend/src/config');
+} catch (error) {
+  console.error('Config loading error:', error);
+  // Fallback config for Vercel
+  config = {
+    postal: { provider: 'juso' },
+    jusoApiKey: process.env.JUSO_API_KEY,
+    upload: { maxFileSize: 10 * 1024 * 1024 },
+    rateLimit: { windowMs: 15 * 60 * 1000, max: 100 }
+  };
+}
 
-// 라우트 가져오기
-const addressRoutes = require('../backend/src/routes/address');
-const fileRoutes = require('../backend/src/routes/file');
-
-// 미들웨어 가져오기
-const errorHandler = require('../backend/src/middleware/errorHandler');
+// 라우트 가져오기 (오류 처리 추가)
+let addressRoutes, fileRoutes, errorHandler;
+try {
+  addressRoutes = require('../backend/src/routes/address');
+  fileRoutes = require('../backend/src/routes/file');
+  errorHandler = require('../backend/src/middleware/errorHandler');
+} catch (error) {
+  console.error('Routes loading error:', error);
+  // 기본 라우트 설정
+  addressRoutes = (req, res) => res.status(500).json({ error: 'Address routes not loaded' });
+  fileRoutes = (req, res) => res.status(500).json({ error: 'File routes not loaded' });
+  errorHandler = (err, req, res, next) => {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  };
+}
 
 const app = express();
 
@@ -58,9 +80,54 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// 라우트 설정
-app.use('/api/address', addressRoutes);
-app.use('/api/file', fileRoutes);
+// 간단한 테스트 라우트
+app.get('/api/test', (req, res) => {
+  res.json({
+    message: 'API is working!',
+    timestamp: new Date().toISOString(),
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      JUSO_API_KEY: process.env.JUSO_API_KEY ? 'Set' : 'Not set',
+      POSTAL_PROVIDER: process.env.POSTAL_PROVIDER
+    }
+  });
+});
+
+// 간단한 주소 검색 테스트
+app.post('/api/address/search', (req, res) => {
+  const { address } = req.body;
+  
+  if (!address) {
+    return res.status(400).json({ 
+      success: false, 
+      error: '주소를 입력해주세요.' 
+    });
+  }
+
+  // 샘플 응답 (실제 API 연결 전 테스트용)
+  res.json({
+    success: true,
+    data: {
+      postalCode: '06158',
+      fullAddress: `서울특별시 강남구 ${address}`,
+      sido: '서울특별시',
+      sigungu: '강남구'
+    }
+  });
+});
+
+// 라우트 설정 (오류 발생 시 위의 기본 핸들러 사용)
+if (typeof addressRoutes === 'function' && addressRoutes.length < 3) {
+  app.use('/api/address', addressRoutes);
+} else {
+  console.log('Using fallback address routes');
+}
+
+if (typeof fileRoutes === 'function' && fileRoutes.length < 3) {
+  app.use('/api/file', fileRoutes);
+} else {
+  console.log('Using fallback file routes');
+}
 
 // 헬스 체크
 app.get('/api/health', (req, res) => {
