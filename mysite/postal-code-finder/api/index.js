@@ -221,7 +221,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
-app.post('/api/file/upload', upload.single('file'), (req, res) => {
+app.post('/api/file/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -244,14 +244,89 @@ app.post('/api/file/upload', upload.single('file'), (req, res) => {
     // 임시 작업 ID 생성
     const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-    res.json({
-      success: true,
-      data: {
-        jobId: jobId,
-        filename: req.file.originalname,
-        message: '파일이 업로드되었습니다. 현재 Vercel 환경에서는 파일 처리 기능이 제한됩니다.'
+    // 엑셀 파일 읽기 시도
+    try {
+      const XLSX = require('xlsx');
+      const fs = require('fs');
+      
+      console.log('Reading Excel file:', req.file.path);
+      
+      // 파일 읽기
+      const workbook = XLSX.readFile(req.file.path);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // JSON으로 변환
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      if (jsonData.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: '엑셀 파일이 비어있습니다.'
+        });
       }
-    });
+
+      // 헤더 행과 데이터 분리
+      const headers = jsonData[0] || [];
+      const rows = jsonData.slice(1);
+
+      // 주소 컬럼 찾기
+      const addressColumnIndex = headers.findIndex(header => 
+        typeof header === 'string' && 
+        (header.includes('주소') || header.includes('address') || header.includes('addr'))
+      );
+
+      if (addressColumnIndex === -1) {
+        return res.status(400).json({
+          success: false,
+          error: '주소 컬럼을 찾을 수 없습니다. 헤더에 "주소" 또는 "address"가 포함된 컬럼이 필요합니다.'
+        });
+      }
+
+      // 처리할 데이터 개수 제한 (Vercel 함수 시간 제한 고려)
+      const limitedRows = rows.slice(0, 50);
+
+      console.log(`Excel parsed: ${headers.length} columns, ${limitedRows.length} rows`);
+
+      // 전역 저장소에 임시 저장 (실제 구현에서는 데이터베이스 사용 권장)
+      global.excelJobs = global.excelJobs || {};
+      global.excelJobs[jobId] = {
+        headers,
+        rows: limitedRows,
+        addressColumnIndex,
+        filename: req.file.originalname,
+        status: 'uploaded',
+        createdAt: new Date()
+      };
+
+      // 임시 파일 삭제
+      fs.unlinkSync(req.file.path);
+
+      res.json({
+        success: true,
+        data: {
+          jobId: jobId,
+          filename: req.file.originalname,
+          totalRows: limitedRows.length,
+          headers: headers,
+          addressColumn: headers[addressColumnIndex],
+          message: `엑셀 파일이 성공적으로 업로드되었습니다. ${limitedRows.length}개 행을 처리합니다.`
+        }
+      });
+
+    } catch (excelError) {
+      console.error('Excel processing error:', excelError);
+      
+      // 임시 파일 삭제
+      if (req.file.path && require('fs').existsSync(req.file.path)) {
+        require('fs').unlinkSync(req.file.path);
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: '엑셀 파일을 읽을 수 없습니다: ' + excelError.message
+      });
+    }
 
   } catch (error) {
     console.error('File upload error:', error);
@@ -262,17 +337,183 @@ app.post('/api/file/upload', upload.single('file'), (req, res) => {
   }
 });
 
-app.get('/api/file/status/:jobId', (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      status: 'completed',
-      progress: 100,
-      processed: 0,
-      total: 0,
-      message: 'Vercel 환경에서는 파일 처리가 제한됩니다. 로컬 환경에서 사용해주세요.'
+app.get('/api/file/status/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    if (!global.excelJobs || !global.excelJobs[jobId]) {
+      return res.status(404).json({
+        success: false,
+        error: '작업을 찾을 수 없습니다.'
+      });
     }
-  });
+
+    const job = global.excelJobs[jobId];
+    
+    if (job.status === 'uploaded') {
+      // 주소 처리 시작
+      job.status = 'processing';
+      job.processed = 0;
+      job.results = [];
+      job.errors = [];
+
+      // 백그라운드에서 주소 처리 (실제로는 동기 처리)
+      try {
+        for (let i = 0; i < job.rows.length; i++) {
+          const row = job.rows[i];
+          const address = row[job.addressColumnIndex];
+          
+          if (!address || typeof address !== 'string') {
+            job.errors.push({ row: i + 2, error: '주소가 없습니다' });
+            continue;
+          }
+
+          try {
+            // JUSO API 호출
+            const axios = require('axios');
+            const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+              params: {
+                confmKey: process.env.JUSO_API_KEY,
+                currentPage: 1,
+                countPerPage: 1,
+                keyword: address,
+                resultType: 'json'
+              },
+              timeout: 5000
+            });
+
+            const results = response.data?.results;
+            const common = results?.common;
+            
+            if (common?.errorCode === '0' && results.juso?.[0]) {
+              const juso = results.juso[0];
+              job.results.push({
+                row: i + 2,
+                originalAddress: address,
+                postalCode: juso.zipNo || '',
+                fullAddress: juso.roadAddr || juso.jibunAddr || '',
+                sido: juso.siNm || '',
+                sigungu: juso.sggNm || ''
+              });
+            } else {
+              job.errors.push({ 
+                row: i + 2, 
+                address: address,
+                error: '우편번호를 찾을 수 없습니다' 
+              });
+            }
+          } catch (apiError) {
+            job.errors.push({ 
+              row: i + 2, 
+              address: address,
+              error: 'API 호출 실패: ' + apiError.message 
+            });
+          }
+
+          job.processed = i + 1;
+          
+          // API 호출 제한을 위한 지연
+          if (i < job.rows.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        job.status = 'completed';
+        job.progress = 100;
+        
+      } catch (processingError) {
+        job.status = 'error';
+        job.error = processingError.message;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: job.status,
+        progress: Math.round((job.processed / job.rows.length) * 100),
+        processed: job.processed || 0,
+        total: job.rows.length,
+        errors: job.errors || [],
+        results: job.results || [],
+        message: job.status === 'completed' ? 
+          `처리 완료: ${job.results?.length || 0}개 성공, ${job.errors?.length || 0}개 실패` :
+          job.status === 'processing' ? '주소 검색 중...' : '대기 중'
+      }
+    });
+
+  } catch (error) {
+    console.error('Status check error:', error);
+    res.status(500).json({
+      success: false,
+      error: '상태 확인 중 오류가 발생했습니다.'
+    });
+  }
+});
+
+// 다운로드 기능
+app.get('/api/file/download/:jobId', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    if (!global.excelJobs || !global.excelJobs[jobId]) {
+      return res.status(404).json({
+        success: false,
+        error: '작업을 찾을 수 없습니다.'
+      });
+    }
+
+    const job = global.excelJobs[jobId];
+    
+    if (job.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: '작업이 완료되지 않았습니다.'
+      });
+    }
+
+    // 엑셀 파일 생성
+    const XLSX = require('xlsx');
+    
+    // 결과 데이터를 엑셀 형식으로 변환
+    const resultData = [
+      [...job.headers, '우편번호', '전체주소', '시도', '시군구'] // 헤더에 새 컬럼 추가
+    ];
+
+    // 원본 데이터에 우편번호 정보 추가
+    job.rows.forEach((row, index) => {
+      const result = job.results.find(r => r.row === index + 2);
+      const newRow = [...row];
+      
+      if (result) {
+        newRow.push(result.postalCode, result.fullAddress, result.sido, result.sigungu);
+      } else {
+        newRow.push('', '', '', ''); // 실패한 경우 빈 값
+      }
+      
+      resultData.push(newRow);
+    });
+
+    // 워크북 생성
+    const ws = XLSX.utils.aoa_to_sheet(resultData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Results');
+
+    // 파일을 버퍼로 생성
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // 다운로드 응답
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="result_${jobId}.xlsx"`);
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({
+      success: false,
+      error: '다운로드 중 오류가 발생했습니다.'
+    });
+  }
 });
 
 // 기존 fileRoutes는 사용하지 않음
