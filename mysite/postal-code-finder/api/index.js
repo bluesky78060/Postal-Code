@@ -203,12 +203,12 @@ app.post('/api/address/search', async (req, res) => {
   }
 });
 
-// 라우트 설정 (오류 발생 시 위의 기본 핸들러 사용)
-if (typeof addressRoutes === 'function' && addressRoutes.length < 3) {
-  app.use('/api/address', addressRoutes);
-} else {
-  console.log('Using fallback address routes');
-}
+// 기존 라우트는 사용하지 않음 (위에서 직접 구현함)
+// if (typeof addressRoutes === 'function' && addressRoutes.length < 3) {
+//   app.use('/api/address', addressRoutes);
+// } else {
+//   console.log('Using fallback address routes');
+// }
 
 if (typeof fileRoutes === 'function' && fileRoutes.length < 3) {
   app.use('/api/file', fileRoutes);
