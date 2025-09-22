@@ -214,11 +214,73 @@ app.post('/api/address/search', async (req, res) => {
 //   console.log('Using fallback address routes');
 // }
 
-if (typeof fileRoutes === 'function' && fileRoutes.length < 3) {
-  app.use('/api/file', fileRoutes);
-} else {
-  console.log('Using fallback file routes');
-}
+// 파일 업로드 라우트 직접 구현
+const multer = require('multer');
+const upload = multer({ 
+  dest: '/tmp/',
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
+
+app.post('/api/file/upload', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: '파일이 업로드되지 않았습니다.'
+      });
+    }
+
+    // 엑셀 파일 검증
+    const allowedTypes = ['.xls', '.xlsx'];
+    const fileExtension = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
+    
+    if (!allowedTypes.includes(fileExtension)) {
+      return res.status(400).json({
+        success: false,
+        error: '엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.'
+      });
+    }
+
+    // 임시 작업 ID 생성
+    const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    res.json({
+      success: true,
+      data: {
+        jobId: jobId,
+        filename: req.file.originalname,
+        message: '파일이 업로드되었습니다. 현재 Vercel 환경에서는 파일 처리 기능이 제한됩니다.'
+      }
+    });
+
+  } catch (error) {
+    console.error('File upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: '파일 업로드 중 오류가 발생했습니다.'
+    });
+  }
+});
+
+app.get('/api/file/status/:jobId', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      status: 'completed',
+      progress: 100,
+      processed: 0,
+      total: 0,
+      message: 'Vercel 환경에서는 파일 처리가 제한됩니다. 로컬 환경에서 사용해주세요.'
+    }
+  });
+});
+
+// 기존 fileRoutes는 사용하지 않음
+// if (typeof fileRoutes === 'function' && fileRoutes.length < 3) {
+//   app.use('/api/file', fileRoutes);
+// } else {
+//   console.log('Using fallback file routes');
+// }
 
 // 헬스 체크
 app.get('/api/health', (req, res) => {
@@ -228,8 +290,6 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime()
   });
 });
-
-const multer = require('multer');
 
 // 에러 핸들링 미들웨어
 app.use((err, req, res, next) => {
