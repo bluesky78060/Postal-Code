@@ -40,6 +40,10 @@ try {
 
 const app = express();
 
+// Behind Vercel/Reverse proxies, trust X-Forwarded-* headers for correct IPs
+// This prevents express-rate-limit v7 from throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+app.set('trust proxy', true);
+
 // 보안 미들웨어
 app.use(helmet({
   contentSecurityPolicy: {
