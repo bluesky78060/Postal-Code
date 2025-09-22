@@ -633,6 +633,15 @@
   }
 
   function printLabels() {
+    const prevTitle = document.title;
+    const ymd = new Date().toISOString().slice(0,10).replace(/-/g, '');
+    document.title = `라벨_${ymd}`;
+    const restore = () => { document.title = prevTitle; window.onafterprint = null; };
+    if ('onafterprint' in window) {
+      window.onafterprint = restore;
+    } else {
+      setTimeout(restore, 2000);
+    }
     window.print();
   }
 
