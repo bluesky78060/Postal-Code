@@ -10,6 +10,13 @@
       "use": "@vercel/static"
     }
   ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": [
+        "docs/sample_hwpx/**"
+      ]
+    }
+  },
   "routes": [
     {
       "src": "/api/(.*)",
