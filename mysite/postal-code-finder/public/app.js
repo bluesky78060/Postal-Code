@@ -614,13 +614,20 @@
           name = name + ' ' + nameSuffix;
         }
         
-        // 그리드 위치 계산: 2열 레이아웃에서 3컬럼 그리드로 매핑
+        // 절대 위치 계산: 2열 × 9행 레이아웃
         const labelIndex = i - start;
-        const row = Math.floor(labelIndex / 2) + 1; // 1부터 시작
-        const col = (labelIndex % 2 === 0) ? 1 : 3; // 첫 번째 또는 세 번째 컬럼
+        const row = Math.floor(labelIndex / 2); // 0부터 시작
+        const col = labelIndex % 2; // 0 또는 1
+        
+        // 좌표 계산 (mm 단위)
+        // 첫 번째 컬럼: left = 0mm
+        // 두 번째 컬럼: left = 100mm + 3mm = 103mm
+        const left = col === 0 ? '0mm' : '103mm';
+        // 각 행: top = row * 30mm
+        const top = (row * 30) + 'mm';
         
         html += `
-          <div class="label-item" style="grid-row: ${row}; grid-column: ${col};">
+          <div class="label-item" style="left: ${left}; top: ${top};">
             <div class="address">${address}</div>
             <div class="name">${name}</div>
             <div class="postal-code">${postalCode}</div>
@@ -630,9 +637,13 @@
       const remaining = perPage - (end - start);
       for (let k = 0; k < remaining && remaining < perPage; k++) {
         const labelIndex = (end - start) + k;
-        const row = Math.floor(labelIndex / 2) + 1;
-        const col = (labelIndex % 2 === 0) ? 1 : 3;
-        html += `<div class="label-item empty" style="grid-row: ${row}; grid-column: ${col};"></div>`;
+        const row = Math.floor(labelIndex / 2); // 0부터 시작
+        const col = labelIndex % 2; // 0 또는 1
+        
+        const left = col === 0 ? '0mm' : '103mm';
+        const top = (row * 30) + 'mm';
+        
+        html += `<div class="label-item empty" style="left: ${left}; top: ${top};"></div>`;
       }
       html += '</div>';
     }

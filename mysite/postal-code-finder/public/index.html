@@ -188,30 +188,24 @@
             transform: scale(0.4);
         }
 
-        /* 단일 A4 페이지 (2열 × 9행, 정확한 라벨 사양) */
+        /* A4 페이지 컨테이너 - 절대 위치 지정 방식 */
         .label-page {
             width: 210mm;
             height: 297mm;
             background: white;
             border: 1px solid #ccc;
-            /* 정확한 페이지 여백: 위 8mm, 아래 12mm, 왼쪽 5mm, 오른쪽 계산됨 */
-            padding: 8mm 0 12mm 5mm; /* top right bottom left */
+            position: relative;
+            /* 정확한 페이지 여백: 위 8mm, 아래 12mm, 왼쪽 5mm */
+            padding: 8mm 0 12mm 5mm;
             box-sizing: border-box;
-            display: grid;
-            /* 라벨 가로 100mm, 간격 3mm를 고려한 정확한 컬럼 설정 */
-            grid-template-columns: 100mm 3mm 100mm;
-            /* 라벨 세로 30mm, 간격 없음을 고려한 정확한 행 설정 */
-            grid-template-rows: repeat(9, 30mm);
-            gap: 0; /* 간격은 grid-template-columns/rows에서 직접 처리 */
-            justify-content: start;
-            align-content: start;
-            page-break-after: always; /* 브라우저별 호환용 */
+            page-break-after: always;
             break-after: page;
         }
 
         .label-item {
-            width: 100%;
-            height: 100%;
+            position: absolute;
+            width: 100mm;
+            height: 30mm;
             border: 1px solid #333;
             padding: 4mm;
             box-sizing: border-box;
@@ -271,13 +265,20 @@
         }
 
         @media print {
-            /* 정확한 페이지 여백 설정 */
+            /* A4 페이지 정확한 설정 */
             @page {
                 size: A4;
-                margin: 8mm 0 12mm 5mm; /* top right bottom left - 오른쪽은 자동 계산 */
+                margin: 0; /* 마진 제거하고 컨테이너에서 처리 */
             }
-            html, body { margin: 0; padding: 0; }
-            /* 다른 UI 요소가 레이아웃 공간을 차지하지 않도록 완전히 제거 */
+            
+            html, body { 
+                margin: 0; 
+                padding: 0; 
+                width: 210mm;
+                height: 297mm;
+            }
+            
+            /* 다른 UI 요소 숨기기 */
             body * { display: none !important; }
 
             /* 인쇄 영역만 표시 */
@@ -285,16 +286,25 @@
                 display: block !important; 
                 transform: none !important; 
                 margin: 0 !important; 
+                width: 210mm;
+                max-width: none !important;
             }
+            
             .label-page { 
-                display: grid !important; 
-                padding: 0 !important; 
+                display: block !important; 
+                position: relative !important;
+                padding: 8mm 0 12mm 5mm !important;
                 border: none !important; 
                 page-break-after: always; 
-                break-after: page; 
+                break-after: page;
+                width: 210mm !important;
+                height: 297mm !important;
+                box-sizing: border-box !important;
             }
+            
             .label-item { 
                 display: flex !important; 
+                position: absolute !important;
                 break-inside: avoid; 
                 page-break-inside: avoid; 
             }
