@@ -157,22 +157,31 @@ app.post('/api/address/search', async (req, res) => {
       timeout: 10000
     });
 
-    const results = response.data?.results;
-    
     // 디버깅을 위한 로그
-    console.log('JUSO API Response:', JSON.stringify(response.data, null, 2));
+    console.log('JUSO API Full Response:', JSON.stringify(response.data, null, 2));
+    
+    const results = response.data?.results;
     
     if (!results) {
       throw new Error('JUSO API 응답이 없습니다');
     }
     
-    if (results.errorCode !== '0') {
-      throw new Error(`JUSO API 오류 ${results.errorCode}: ${results.errorMessage || '알 수 없는 오류'}`);
+    // common 객체에서 errorCode 확인
+    const common = results.common;
+    if (!common) {
+      throw new Error('JUSO API 응답 형식이 잘못되었습니다');
+    }
+    
+    if (common.errorCode !== '0') {
+      throw new Error(`JUSO API 오류 ${common.errorCode}: ${common.errorMessage || '알 수 없는 오류'}`);
     }
 
     const juso = results.juso?.[0];
     if (!juso) {
-      throw new Error('검색 결과 없음');
+      return res.json({
+        success: false,
+        error: '해당 주소의 우편번호를 찾을 수 없습니다.'
+      });
     }
 
     const result = {
@@ -182,12 +191,7 @@ app.post('/api/address/search', async (req, res) => {
       sigungu: juso.sggNm || ''
     };
     
-    if (!result) {
-      return res.json({
-        success: false,
-        error: '해당 주소의 우편번호를 찾을 수 없습니다.'
-      });
-    }
+    console.log('Parsed result:', result);
 
     res.json({
       success: true,
