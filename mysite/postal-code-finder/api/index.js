@@ -288,29 +288,106 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
 
       console.log(`Excel parsed: ${headers.length} columns, ${limitedRows.length} rows`);
 
-      // 전역 저장소에 임시 저장 (실제 구현에서는 데이터베이스 사용 권장)
-      global.excelJobs = global.excelJobs || {};
-      global.excelJobs[jobId] = {
+      // 즉시 처리 방식으로 변경 (Vercel 서버리스 환경 대응)
+      console.log('Starting immediate processing...');
+      
+      const jobData = {
         headers,
         rows: limitedRows,
         addressColumnIndex,
         filename: req.file.originalname,
-        status: 'uploaded',
+        status: 'processing',
+        processed: 0,
+        results: [],
+        errors: [],
         createdAt: new Date()
       };
+
+      // 즉시 주소 처리 시작
+      for (let i = 0; i < limitedRows.length; i++) {
+        const row = limitedRows[i];
+        const address = row[addressColumnIndex];
+        
+        if (!address || typeof address !== 'string') {
+          jobData.errors.push({ row: i + 2, error: '주소가 없습니다' });
+          continue;
+        }
+
+        try {
+          // JUSO API 호출
+          const axios = require('axios');
+          const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+            params: {
+              confmKey: process.env.JUSO_API_KEY,
+              currentPage: 1,
+              countPerPage: 1,
+              keyword: address,
+              resultType: 'json'
+            },
+            timeout: 5000
+          });
+
+          const results = response.data?.results;
+          const common = results?.common;
+          
+          if (common?.errorCode === '0' && results.juso?.[0]) {
+            const juso = results.juso[0];
+            jobData.results.push({
+              row: i + 2,
+              originalAddress: address,
+              postalCode: juso.zipNo || '',
+              fullAddress: juso.roadAddr || juso.jibunAddr || '',
+              sido: juso.siNm || '',
+              sigungu: juso.sggNm || ''
+            });
+          } else {
+            jobData.errors.push({ 
+              row: i + 2, 
+              address: address,
+              error: '우편번호를 찾을 수 없습니다' 
+            });
+          }
+        } catch (apiError) {
+          jobData.errors.push({ 
+            row: i + 2, 
+            address: address,
+            error: 'API 호출 실패: ' + apiError.message 
+          });
+        }
+
+        jobData.processed = i + 1;
+        
+        // API 호출 제한을 위한 지연
+        if (i < limitedRows.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+
+      jobData.status = 'completed';
+      jobData.progress = 100;
+
+      // 전역 저장소에 저장 (다운로드용)
+      global.excelJobs = global.excelJobs || {};
+      global.excelJobs[jobId] = jobData;
 
       // 임시 파일 삭제
       fs.unlinkSync(req.file.path);
 
+      // 즉시 처리 완료된 결과 반환
       res.json({
         success: true,
         data: {
           jobId: jobId,
           filename: req.file.originalname,
           totalRows: limitedRows.length,
+          processed: jobData.processed,
+          successful: jobData.results.length,
+          failed: jobData.errors.length,
           headers: headers,
           addressColumn: headers[addressColumnIndex],
-          message: `엑셀 파일이 성공적으로 업로드되었습니다. ${limitedRows.length}개 행을 처리합니다.`
+          status: 'completed',
+          downloadReady: true,
+          message: `처리 완료: ${jobData.results.length}개 성공, ${jobData.errors.length}개 실패`
         }
       });
 
