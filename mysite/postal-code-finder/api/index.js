@@ -221,6 +221,11 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
+// Initialize global job store for serverless runtime
+if (!global.excelJobs) {
+  global.excelJobs = {};
+}
+
 app.post('/api/file/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -320,7 +325,40 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       console.log(`Duplicates removed: ${duplicatesRemoved}, Unique rows: ${uniqueRows.length}`);
       console.log(`Processing: ${limitedRows.length} rows (limited to 200)`);
 
-      // 즉시 처리 방식으로 변경 (Vercel 서버리스 환경 대응)
+      // Label mode: register job and return JSON (no download)
+      const mode = (req.query.mode || '').toLowerCase();
+      if (mode === 'label') {
+        global.excelJobs[jobId] = {
+          headers,
+          rows: limitedRows,
+          addressColumnIndex,
+          filename: req.file.originalname,
+          status: 'uploaded',
+          processed: 0,
+          results: [],
+          errors: [],
+          duplicatesRemoved,
+          originalRowCount: rows.length,
+          uniqueRowCount: uniqueRows.length,
+          createdAt: new Date()
+        };
+
+        try { fs.unlinkSync(req.file.path); } catch {}
+
+        return res.json({
+          success: true,
+          data: {
+            jobId,
+            filename: req.file.originalname,
+            originalRows: rows.length,
+            duplicatesRemoved,
+            uniqueRows: uniqueRows.length,
+            status: 'uploaded'
+          }
+        });
+      }
+
+      // 즉시 처리 방식 (기본: 다운로드)
       console.log('Starting immediate processing...');
       
       const jobData = {
@@ -411,20 +449,21 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         // 기존 컬럼 중에서 중복될 수 있는 컬럼들 확인
         const existingColumns = headers.map(h => String(h).toLowerCase());
         const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
-        const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road'));
+        const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
         const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
         const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
 
         // 새로 추가할 컬럼들만 선별
         const newHeaders = [...headers];
         if (!hasPostalCode) newHeaders.push('우편번호');
-        if (!hasFullAddress) newHeaders.push('전체주소');
+        if (!hasFullAddress) newHeaders.push('도로명주소');
         if (!hasSido) newHeaders.push('시도');
         if (!hasSigungu) newHeaders.push('시군구');
 
         console.log('Original headers:', headers);
-        console.log('New headers:', newHeaders);
+        console.log('Existing columns lowercase:', existingColumns);
         console.log('Duplicate check:', { hasPostalCode, hasFullAddress, hasSido, hasSigungu });
+        console.log('New headers:', newHeaders);
 
         // 결과 데이터를 엑셀 형식으로 변환
         const resultData = [newHeaders];
@@ -671,14 +710,14 @@ app.get('/api/file/download/:jobId', (req, res) => {
       // 기존 컬럼 중에서 중복될 수 있는 컬럼들 확인
       const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
       const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
-      const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road'));
+      const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
       const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
       const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
 
       // 새로 추가할 컬럼들만 선별
       const newHeaders = [...safeHeaders];
       if (!hasPostalCode) newHeaders.push('우편번호');
-      if (!hasFullAddress) newHeaders.push('전체주소');
+      if (!hasFullAddress) newHeaders.push('도로명주소');
       if (!hasSido) newHeaders.push('시도');
       if (!hasSigungu) newHeaders.push('시군구');
       
@@ -745,6 +784,63 @@ app.get('/api/file/download/:jobId', (req, res) => {
       success: false,
       error: '다운로드 중 오류가 발생했습니다.'
     });
+  }
+});
+
+// 라벨 데이터 JSON 반환 (처리 완료 후)
+app.get('/api/file/label-data/:jobId', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!global.excelJobs || !global.excelJobs[jobId]) {
+      return res.status(404).json({ success: false, error: '작업을 찾을 수 없습니다.' });
+    }
+    const job = global.excelJobs[jobId];
+    if (job.status !== 'completed') {
+      return res.status(400).json({ success: false, error: '작업이 완료되지 않았습니다.' });
+    }
+
+    const safeHeaders = Array.isArray(job.headers) ? job.headers : [];
+    const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
+    const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
+    const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
+    const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
+    const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+
+    const newHeaders = [...safeHeaders];
+    if (!hasPostalCode) newHeaders.push('우편번호');
+    if (!hasFullAddress) newHeaders.push('도로명주소');
+    if (!hasSido) newHeaders.push('시도');
+    if (!hasSigungu) newHeaders.push('시군구');
+
+    const rows = Array.isArray(job.rows) ? job.rows : [];
+    const resultRows = rows.map((row, index) => {
+      const result = job.results?.find(r => r.row === index + 2);
+      const newRow = Array.isArray(row) ? [...row] : Object.values(row || {});
+      while (newRow.length < safeHeaders.length) newRow.push('');
+      if (result) {
+        if (!hasPostalCode) newRow.push(result.postalCode || '');
+        if (!hasFullAddress) newRow.push(result.fullAddress || '');
+        if (!hasSido) newRow.push(result.sido || '');
+        if (!hasSigungu) newRow.push(result.sigungu || '');
+      } else {
+        if (!hasPostalCode) newRow.push('');
+        if (!hasFullAddress) newRow.push('');
+        if (!hasSido) newRow.push('');
+        if (!hasSigungu) newRow.push('');
+      }
+      return newRow;
+    });
+
+    const jsonRows = resultRows.map(arr => {
+      const obj = {};
+      newHeaders.forEach((h, i) => { obj[h] = arr[i] || ''; });
+      return obj;
+    });
+
+    res.json({ success: true, data: { headers: newHeaders, rows: jsonRows } });
+  } catch (error) {
+    console.error('Label data error:', error);
+    res.status(500).json({ success: false, error: '라벨 데이터 생성 중 오류가 발생했습니다.' });
   }
 });
 
