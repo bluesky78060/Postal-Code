@@ -93,8 +93,8 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// 간단한 주소 검색 테스트
-app.post('/api/address/search', (req, res) => {
+// 실제 JUSO API 주소 검색
+app.post('/api/address/search', async (req, res) => {
   const { address } = req.body;
   
   if (!address) {
@@ -104,16 +104,64 @@ app.post('/api/address/search', (req, res) => {
     });
   }
 
-  // 샘플 응답 (실제 API 연결 전 테스트용)
-  res.json({
-    success: true,
-    data: {
-      postalCode: '06158',
-      fullAddress: `서울특별시 강남구 ${address}`,
-      sido: '서울특별시',
-      sigungu: '강남구'
+  if (address.length < 2) {
+    return res.status(400).json({ 
+      success: false, 
+      error: '주소는 2자 이상 입력해주세요.' 
+    });
+  }
+
+  try {
+    // 간단한 JUSO API 호출로 대체
+    const axios = require('axios');
+    
+    const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+      params: {
+        confmKey: process.env.JUSO_API_KEY,
+        currentPage: 1,
+        countPerPage: 1,
+        keyword: address,
+        resultType: 'json'
+      },
+      timeout: 10000
+    });
+
+    const results = response.data?.results;
+    if (!results || results.errorCode !== '0') {
+      throw new Error(results?.errorMessage || 'JUSO API 오류');
     }
-  });
+
+    const juso = results.juso?.[0];
+    if (!juso) {
+      throw new Error('검색 결과 없음');
+    }
+
+    const result = {
+      postalCode: juso.zipNo || '',
+      fullAddress: juso.roadAddr || juso.jibunAddr || '',
+      sido: juso.siNm || '',
+      sigungu: juso.sggNm || ''
+    };
+    
+    if (!result) {
+      return res.json({
+        success: false,
+        error: '해당 주소의 우편번호를 찾을 수 없습니다.'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Address search error:', error);
+    res.status(500).json({
+      success: false,
+      error: '주소 검색 중 오류가 발생했습니다: ' + error.message
+    });
+  }
 });
 
 // 라우트 설정 (오류 발생 시 위의 기본 핸들러 사용)
