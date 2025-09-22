@@ -93,6 +93,37 @@ app.get('/api/test', (req, res) => {
   });
 });
 
+// JUSO API 키 테스트
+app.get('/api/test-juso', async (req, res) => {
+  try {
+    const axios = require('axios');
+    
+    const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+      params: {
+        confmKey: process.env.JUSO_API_KEY,
+        currentPage: 1,
+        countPerPage: 1,
+        keyword: '서울시 강남구',
+        resultType: 'json'
+      },
+      timeout: 10000
+    });
+
+    res.json({
+      message: 'JUSO API 테스트',
+      apiKey: process.env.JUSO_API_KEY ? '설정됨' : '미설정',
+      response: response.data
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: 'JUSO API 테스트 실패',
+      error: error.message,
+      apiKey: process.env.JUSO_API_KEY ? '설정됨' : '미설정'
+    });
+  }
+});
+
 // 실제 JUSO API 주소 검색
 app.post('/api/address/search', async (req, res) => {
   const { address } = req.body;
@@ -127,8 +158,16 @@ app.post('/api/address/search', async (req, res) => {
     });
 
     const results = response.data?.results;
-    if (!results || results.errorCode !== '0') {
-      throw new Error(results?.errorMessage || 'JUSO API 오류');
+    
+    // 디버깅을 위한 로그
+    console.log('JUSO API Response:', JSON.stringify(response.data, null, 2));
+    
+    if (!results) {
+      throw new Error('JUSO API 응답이 없습니다');
+    }
+    
+    if (results.errorCode !== '0') {
+      throw new Error(`JUSO API 오류 ${results.errorCode}: ${results.errorMessage || '알 수 없는 오류'}`);
     }
 
     const juso = results.juso?.[0];
