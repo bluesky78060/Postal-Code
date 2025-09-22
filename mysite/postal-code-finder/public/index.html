@@ -185,18 +185,20 @@
             background: white;
             border: 1px solid #ccc;
             margin: 20px auto;
-            padding: 8.5mm 5mm;
+            /* 미리보기용 여백(페이지 여백 시뮬레이션) */
+            padding: 8mm 3mm 12mm 5mm; /* top right bottom left */
             display: grid;
-            grid-template-columns: repeat(2, 100mm);
+            grid-template-columns: repeat(2, 99.5mm);
             grid-template-rows: repeat(9, 30mm);
-            gap: 0;
+            /* 위아래 간격 0mm, 좌우 간격 3mm */
+            gap: 0 3mm;
             transform-origin: top left;
             transform: scale(0.4);
             justify-content: center;
         }
 
         .label-item {
-            width: 100mm;
+            width: 99.5mm;
             height: 30mm;
             border: 0.5px solid #ddd;
             padding: 3mm;
@@ -252,6 +254,11 @@
         }
 
         @media print {
+            /* 페이지 여백 설정: 위 8mm, 아래 12mm, 왼쪽 5mm, 오른쪽 3mm */
+            @page {
+                size: A4;
+                margin: 8mm 3mm 12mm 5mm; /* top right bottom left */
+            }
             body * {
                 visibility: hidden;
             }
@@ -268,7 +275,10 @@
                 height: 297mm;
                 transform: none;
                 margin: 0;
+                /* 인쇄 시에는 @page 여백을 사용하므로 내부 패딩 제거 */
                 padding: 0;
+                /* 인쇄 시에도 가로 간격 3mm, 세로 간격 0 유지 */
+                gap: 0 3mm;
             }
         }
     </style>
