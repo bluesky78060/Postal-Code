@@ -101,12 +101,29 @@
     try {
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
       
-      // 응답이 JSON인지 확인
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType && contentType.includes('application/json')) {
+      // 응답 헤더 확인
+      const contentType = response.headers.get('content-type') || '';
+      const contentDisposition = response.headers.get('content-disposition') || '';
+
+      // 첨부파일 다운로드 응답인지 우선 확인
+      const looksLikeFile = /attachment/i.test(contentDisposition) ||
+                            /application\/(vnd\.openxmlformats-officedocument|octet-stream)/i.test(contentType);
+
+      // JSON 파싱 시도 (clone 사용, 실패 시 파일로 처리)
+      let parsedJson = null;
+      let isJson = /application\/json/i.test(contentType);
+      if (!looksLikeFile) {
+        try {
+          parsedJson = await response.clone().json();
+          isJson = true;
+        } catch (_) {
+          isJson = false;
+        }
+      }
+
+      if (isJson && parsedJson) {
         // JSON 응답 (처리 결과)
-        const data = await response.json();
+        const data = parsedJson;
         progressDiv.classList.add('hidden');
         
         if (data.success) {
@@ -269,18 +286,61 @@
 
       console.log('API 호출:', `${API_BASE}/file/upload`);
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      const data = await response.json();
       
-      console.log('서버 응답:', data);
+      // 응답 헤더 확인
+      const contentType = response.headers.get('content-type') || '';
+      const contentDisposition = response.headers.get('content-disposition') || '';
       
-      if (data.success) {
-        const jobId = data.data.jobId;
-        console.log('JobID:', jobId);
-        updateLabelProgress(10, '파일 처리 중...');
-        await waitForLabelProcessing(jobId);
+      // 첨부파일 다운로드 응답인지 우선 확인
+      const looksLikeFile = /attachment/i.test(contentDisposition) ||
+                            /application\/(vnd\.openxmlformats-officedocument|octet-stream)/i.test(contentType);
+
+      // JSON 파싱 시도 (clone 사용, 실패 시 파일로 처리)
+      let parsedJson = null;
+      let isJson = /application\/json/i.test(contentType);
+      if (!looksLikeFile) {
+        try {
+          parsedJson = await response.clone().json();
+          isJson = true;
+        } catch (_) {
+          isJson = false;
+        }
+      }
+
+      if (isJson && parsedJson) {
+        // JSON 응답 (처리 결과)
+        const data = parsedJson;
+        console.log('서버 응답:', data);
+        
+        if (data.success) {
+          const jobId = data.data.jobId;
+          console.log('JobID:', jobId);
+          updateLabelProgress(10, '파일 처리 중...');
+          await waitForLabelProcessing(jobId);
+        } else {
+          document.getElementById('labelUploadProgress').classList.add('hidden');
+          alert('파일 업로드 실패: ' + data.error);
+        }
       } else {
+        // 파일 다운로드 응답
         document.getElementById('labelUploadProgress').classList.add('hidden');
-        alert('파일 업로드 실패: ' + data.error);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `postal_result_${new Date().getTime()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        console.log('✅ 라벨 파일 다운로드 완료');
+        alert('파일 처리 및 다운로드가 완료되었습니다!');
+        
+        // 샘플 데이터로 라벨 미리보기 생성
+        labelData = generateSampleData();
+        showLabelDataPreview();
       }
     } catch (error) {
       console.error('파일 처리 오류:', error);
