@@ -586,43 +586,46 @@
     const labelSheet = document.getElementById('labelSheet');
     let html = '';
 
-    // 18칸 라벨 생성 (2열 × 9행)
-    for (let i = 0; i < 18; i++) {
-      const dataIndex = i % dataRows.length;
-      const rowData = dataRows[dataIndex];
-      
-      let name = '', address = '', postalCode = '';
-      
-      // 데이터가 객체 형태인지 배열 형태인지 확인
-      if (typeof rowData === 'object' && !Array.isArray(rowData)) {
-        // 객체 형태 (샘플 데이터)
-        name = fieldMappings.name ? rowData[fieldMappings.name] || '' : '';
-        address = fieldMappings.address ? rowData[fieldMappings.address] || '' : '';
-        postalCode = fieldMappings.postalCode ? rowData[fieldMappings.postalCode] || '' : '';
-      } else if (Array.isArray(rowData)) {
-        // 배열 형태 (API 응답)
-        const nameIndex = headers.indexOf(fieldMappings.name);
-        const addressIndex = headers.indexOf(fieldMappings.address);
-        const postalCodeIndex = headers.indexOf(fieldMappings.postalCode);
-        
-        name = nameIndex >= 0 ? rowData[nameIndex] || '' : '';
-        address = addressIndex >= 0 ? rowData[addressIndex] || '' : '';
-        postalCode = postalCodeIndex >= 0 ? rowData[postalCodeIndex] || '' : '';
-      }
+    const perPage = 18; // 2열 × 9행
+    const total = dataRows.length;
+    const totalPages = Math.ceil(total / perPage) || 1;
 
-      // 성명 뒤 호칭 추가
-      const nameSuffix = document.getElementById('nameSuffix')?.value || '';
-      if (name && nameSuffix) {
-        name = name + ' ' + nameSuffix;
+    for (let p = 0; p < totalPages; p++) {
+      html += '<div class="label-page">';
+      const start = p * perPage;
+      const end = Math.min(start + perPage, total);
+      for (let i = start; i < end; i++) {
+        const rowData = dataRows[i];
+        let name = '', address = '', postalCode = '';
+        if (typeof rowData === 'object' && !Array.isArray(rowData)) {
+          name = fieldMappings.name ? rowData[fieldMappings.name] || '' : '';
+          address = fieldMappings.address ? rowData[fieldMappings.address] || '' : '';
+          postalCode = fieldMappings.postalCode ? rowData[fieldMappings.postalCode] || '' : '';
+        } else if (Array.isArray(rowData)) {
+          const nameIndex = headers.indexOf(fieldMappings.name);
+          const addressIndex = headers.indexOf(fieldMappings.address);
+          const postalCodeIndex = headers.indexOf(fieldMappings.postalCode);
+          name = nameIndex >= 0 ? rowData[nameIndex] || '' : '';
+          address = addressIndex >= 0 ? rowData[addressIndex] || '' : '';
+          postalCode = postalCodeIndex >= 0 ? rowData[postalCodeIndex] || '' : '';
+        }
+        const nameSuffix = document.getElementById('nameSuffix')?.value || '';
+        if (name && nameSuffix) {
+          name = name + ' ' + nameSuffix;
+        }
+        html += `
+          <div class="label-item">
+            <div class="address">${address}</div>
+            <div class="name">${name}</div>
+            <div class="postal-code">${postalCode}</div>
+          </div>
+        `;
       }
-
-      html += `
-        <div class="label-item">
-          <div class="address">${address}</div>
-          <div class="name">${name}</div>
-          <div class="postal-code">${postalCode}</div>
-        </div>
-      `;
+      const remaining = perPage - (end - start);
+      for (let k = 0; k < remaining && remaining < perPage; k++) {
+        html += '<div class="label-item empty"></div>';
+      }
+      html += '</div>';
     }
 
     labelSheet.innerHTML = html;
