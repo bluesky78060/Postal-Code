@@ -93,29 +93,70 @@
 
     progressDiv.classList.remove('hidden');
     resultDiv.classList.add('hidden');
+    updateProgress(0, '파일 업로드 및 처리 중...');
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      const data = await response.json();
-      if (data.success) {
-        const jobId = data.data.jobId;
-        checkProgress(jobId);
-      } else {
+      
+      // 응답이 JSON인지 확인
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        // JSON 응답 (처리 결과)
+        const data = await response.json();
         progressDiv.classList.add('hidden');
+        
+        if (data.success) {
+          showResult(resultDiv, `
+            <h3>✅ 파일 처리가 완료되었습니다!</h3>
+            <p><strong>처리된 행:</strong> ${data.data.processed}개</p>
+            <p><strong>성공:</strong> ${data.data.successful}개</p>
+            <p><strong>실패:</strong> ${data.data.failed}개</p>
+            <div style="margin-top:12px">
+              <p>❌ 직접 다운로드 기능이 실패했습니다. 결과 데이터:</p>
+              <button class="btn" data-reset-upload>↩️ 초기화</button>
+            </div>
+          `, 'success');
+        } else {
+          showResult(resultDiv, `
+            ❌ ${data.error}
+            <div style="margin-top:12px">
+              <button class="btn" data-reset-upload>↩️ 초기화</button>
+            </div>
+          `, 'error');
+        }
+      } else {
+        // 파일 다운로드 응답
+        progressDiv.classList.add('hidden');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `postal_result_${new Date().getTime()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
         showResult(resultDiv, `
-          ❌ ${data.error}
+          <h3>✅ 파일 처리 및 다운로드 완료!</h3>
+          <p><strong>파일:</strong> ${file.name}</p>
+          <p><strong>처리:</strong> 최대 200개 행 처리됨</p>
+          <p><strong>결과:</strong> 우편번호가 추가된 엑셀 파일이 다운로드되었습니다</p>
           <div style="margin-top:12px">
             <button class="btn" data-reset-upload>↩️ 초기화</button>
           </div>
-        `, 'error');
+        `, 'success');
       }
+      
     } catch (error) {
       progressDiv.classList.add('hidden');
       showResult(resultDiv, `
-        ❌ 업로드 중 오류가 발생했습니다.
+        ❌ 업로드 중 오류가 발생했습니다: ${error.message}
         <div style="margin-top:12px">
           <button class="btn" data-reset-upload>↩️ 초기화</button>
         </div>

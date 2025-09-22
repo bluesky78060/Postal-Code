@@ -366,30 +366,74 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       jobData.status = 'completed';
       jobData.progress = 100;
 
-      // 전역 저장소에 저장 (다운로드용)
-      global.excelJobs = global.excelJobs || {};
-      global.excelJobs[jobId] = jobData;
-
       // 임시 파일 삭제
       fs.unlinkSync(req.file.path);
 
-      // 즉시 처리 완료된 결과 반환
-      res.json({
-        success: true,
-        data: {
-          jobId: jobId,
-          filename: req.file.originalname,
-          totalRows: limitedRows.length,
-          processed: jobData.processed,
-          successful: jobData.results.length,
-          failed: jobData.errors.length,
-          headers: headers,
-          addressColumn: headers[addressColumnIndex],
-          status: 'completed',
-          downloadReady: true,
-          message: `처리 완료: ${jobData.results.length}개 성공, ${jobData.errors.length}개 실패`
-        }
-      });
+      // 즉시 엑셀 파일 생성 및 다운로드 응답
+      try {
+        const XLSX = require('xlsx');
+        
+        // 결과 데이터를 엑셀 형식으로 변환
+        const resultData = [
+          [...headers, '우편번호', '전체주소', '시도', '시군구'] // 헤더에 새 컬럼 추가
+        ];
+
+        // 원본 데이터에 우편번호 정보 추가
+        limitedRows.forEach((row, index) => {
+          const result = jobData.results.find(r => r.row === index + 2);
+          const newRow = Array.isArray(row) ? [...row] : Object.values(row || {});
+          
+          // 헤더와 행의 길이 맞춤
+          while (newRow.length < headers.length) {
+            newRow.push('');
+          }
+          
+          if (result) {
+            newRow.push(result.postalCode || '', result.fullAddress || '', result.sido || '', result.sigungu || '');
+          } else {
+            newRow.push('', '', '', ''); // 실패한 경우 빈 값
+          }
+          
+          resultData.push(newRow);
+        });
+
+        // 워크북 생성
+        const ws = XLSX.utils.aoa_to_sheet(resultData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Results');
+
+        // 파일을 버퍼로 생성
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        console.log('Excel file generated, size:', buffer.length);
+
+        // 다운로드 응답
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="postal_result_${new Date().getTime()}.xlsx"`);
+        res.send(buffer);
+
+      } catch (excelGenError) {
+        console.error('Excel generation error:', excelGenError);
+        
+        // 엑셀 생성 실패 시 JSON 응답
+        res.json({
+          success: true,
+          data: {
+            jobId: jobId,
+            filename: req.file.originalname,
+            totalRows: limitedRows.length,
+            processed: jobData.processed,
+            successful: jobData.results.length,
+            failed: jobData.errors.length,
+            headers: headers,
+            addressColumn: headers[addressColumnIndex],
+            status: 'completed',
+            results: jobData.results,
+            errors: jobData.errors,
+            message: `처리 완료: ${jobData.results.length}개 성공, ${jobData.errors.length}개 실패 (엑셀 생성 오류: ${excelGenError.message})`
+          }
+        });
+      }
 
     } catch (excelError) {
       console.error('Excel processing error:', excelError);
