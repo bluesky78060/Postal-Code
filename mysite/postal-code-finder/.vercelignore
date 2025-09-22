@@ -1,0 +1,12 @@
+backend/node_modules
+backend/uploads
+backend/.env
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
+backend/dist
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

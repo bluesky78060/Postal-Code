@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우편번호 자동 입력 시스템</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 30px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            background: #667eea;
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .file-upload {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-upload:hover {
+            background: #f8f9ff;
+        }
+
+        .file-upload.dragover {
+            border-color: #764ba2;
+            background: #f0f4ff;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .result {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error {
+            background: #fee;
+            border-left-color: #e74c3c;
+            color: #c0392b;
+        }
+
+        .success {
+            background: #efe;
+            border-left-color: #27ae60;
+            color: #27ae60;
+        }
+
+        /* 라벨 출력 관련 스타일 - A4 2열 9행 */
+        .label-sheet {
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            border: 1px solid #ccc;
+            margin: 20px auto;
+            padding: 8.5mm 5mm;
+            display: grid;
+            grid-template-columns: repeat(2, 100mm);
+            grid-template-rows: repeat(9, 30mm);
+            gap: 0;
+            transform-origin: top left;
+            transform: scale(0.4);
+            justify-content: center;
+        }
+
+        .label-item {
+            width: 100mm;
+            height: 30mm;
+            border: 0.5px solid #ddd;
+            padding: 3mm;
+            box-sizing: border-box;
+            font-size: 10pt;
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            line-height: 1.2;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: right;
+        }
+
+        .label-item .address {
+            font-size: 10pt;
+            line-height: 1.2;
+            margin-bottom: 1mm;
+            color: #2c3e50;
+        }
+
+        .label-item .name {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 1mm;
+            color: #2c3e50;
+        }
+
+        .label-item .postal-code {
+            font-size: 11pt;
+            font-weight: normal;
+            margin-top: auto;
+            color: #2c3e50;
+        }
+
+        .field-mapping {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            gap: 10px;
+        }
+
+        .field-mapping label {
+            min-width: 80px;
+            font-weight: 600;
+        }
+
+        .field-mapping select {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 150px;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            
+            .label-sheet, .label-sheet * {
+                visibility: visible;
+            }
+            
+            .label-sheet {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 210mm;
+                height: 297mm;
+                transform: none;
+                margin: 0;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📮 우편번호 자동 입력</h1>
+            <p>주소를 입력하거나 엑셀 파일을 업로드하여 우편번호를 자동으로 찾아보세요</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <button class="tab active" data-tab="search">주소 검색</button>
+                <button class="tab" data-tab="upload">엑셀 업로드</button>
+                <button class="tab" data-tab="label">라벨 출력</button>
+            </div>
+
+            <!-- 주소 검색 탭 -->
+            <div id="search" class="tab-content active">
+                <div class="form-group">
+                    <label for="address">주소 입력</label>
+                    <input type="text" id="address" placeholder="예: 서울특별시 강남구 테헤란로 123">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <button class="btn" id="btnSearch">🔍 우편번호 찾기</button>
+                </div>
+                
+                <div id="searchResult" class="result hidden">
+                    <!-- 검색 결과가 여기에 표시됩니다 -->
+                </div>
+            </div>
+
+            <!-- 엑셀 업로드 탭 -->
+            <div id="upload" class="tab-content">
+                <div class="file-upload" id="fileDropArea">
+                    <p>📄 엑셀 파일을 선택하거나 여기에 드래그하세요</p>
+                    <p style="color: #666; margin-top: 10px;">지원 형식: .xls, .xlsx (최대 10MB)</p>
+                    <input type="file" id="file" accept=".xls,.xlsx" style="display: none;">
+                </div>
+
+                <div id="uploadProgress" class="hidden">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <p id="progressText">처리 중...</p>
+                </div>
+
+                <div id="uploadResult" class="result hidden">
+                    <!-- 업로드 결과가 여기에 표시됩니다 -->
+                </div>
+            </div>
+
+            <!-- 라벨 출력 탭 -->
+            <div id="label" class="tab-content">
+                <div class="form-group">
+                    <label for="labelFile">라벨 데이터 엑셀 파일</label>
+                    <div class="file-upload" id="labelFileDropArea">
+                        <p>📄 주소가 포함된 엑셀 파일을 선택하거나 여기에 드래그하세요</p>
+                        <p style="color: #666; margin-top: 10px;">A4 용지 2열 9행 (18개) 라벨지용</p>
+                        <input type="file" id="labelFile" accept=".xls,.xlsx" style="display: none;">
+                    </div>
+                    <div style="text-align: center; margin-top: 15px;">
+                        <button class="btn" id="btnLoadSampleData">📊 샘플 데이터로 테스트</button>
+                    </div>
+                </div>
+
+                <div id="labelUploadProgress" class="hidden">
+                    <div class="progress-bar">
+                        <div id="labelProgressFill" class="progress-fill"></div>
+                    </div>
+                    <p id="labelProgressText">처리 중...</p>
+                </div>
+
+                <div id="labelDataPreview" class="hidden">
+                    <h3>📊 데이터 미리보기</h3>
+                    <div id="labelDataTable" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;"></div>
+                    <div style="margin: 20px 0;">
+                        <label for="labelTemplate">라벨 템플릿 선택:</label>
+                        <select id="labelTemplate" style="margin-left: 10px; padding: 8px;">
+                            <option value="2x9">A4 - 2열 9행 (18개, 100×30mm)</option>
+                            <option value="3x7">A4 - 3열 7행 (21개)</option>
+                            <option value="4x6">A4 - 4열 6행 (24개)</option>
+                        </select>
+                    </div>
+                    <div style="margin: 20px 0;">
+                        <label>라벨 필드 설정:</label>
+                        <div id="labelFieldMapping" style="margin-top: 10px;">
+                            <!-- 필드 매핑이 여기에 표시됩니다 -->
+                        </div>
+                        <div class="field-mapping" style="margin-top: 10px;">
+                            <label>성명 뒤 호칭:</label>
+                            <select id="nameSuffix" style="margin-left: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">없음</option>
+                                <option value="님" selected>님</option>
+                                <option value="귀하">귀하</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn" id="btnGenerateLabels">🏷️ 라벨 생성</button>
+                </div>
+
+                <div id="labelPreview" class="hidden">
+                    <h3>🖨️ 라벨 미리보기</h3>
+                    <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn" id="btnPrintLabels">🖨️ 인쇄하기</button>
+                        <button class="btn" id="btnDownloadPDF">📥 PDF 다운로드</button>
+                        <button class="btn" id="btnLabelReset">↩️ 초기화</button>
+                    </div>
+                    <div id="labelSheet" class="label-sheet">
+                        <!-- 라벨 시트가 여기에 표시됩니다 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
