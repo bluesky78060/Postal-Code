@@ -37,7 +37,7 @@ function buildSectionXml(rows, options = {}) {
   function cellXml(texts, cellId) {
     // 실제 텍스트 내용을 포함한 3줄 생성 (주소: 왼쪽정렬, 이름: 오른쪽정렬, 우편번호: 오른쪽정렬)
     const alignments = ['LEFT', 'RIGHT', 'RIGHT']; // 주소, 이름, 우편번호 순서
-    const paraPrIds = [11, 0, 0]; // LEFT=11(header.xml의 LEFT 정렬 ID), CENTER와 RIGHT는 인라인으로 정의
+    const paraPrIds = [11, 11, 11]; // 모두 동일한 paragraph property 사용
     
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
@@ -45,19 +45,19 @@ function buildSectionXml(rows, options = {}) {
       const alignment = alignments[idx] || 'LEFT';
       const paraPrId = paraPrIds[idx];
       
-      // 인라인 정렬 설정 (RIGHT용)
-      let alignAttr = '';
+      // 정렬에 따른 수평 위치 계산
+      let horzpos = 0; // 기본값 (왼쪽 정렬)
       if (alignment === 'RIGHT') {
-        alignAttr = ' horizontalAlign="RIGHT"';
+        horzpos = 20000; // 오른쪽 정렬을 위해 텍스트를 오른쪽으로 이동
       }
       
       return `
-        <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"${alignAttr}>
+        <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
           <hp:run charPrIDRef="0">
             <hp:t>${escapeXml(content)}</hp:t>
           </hp:run>
           <hp:linesegarray>
-            <hp:lineseg textpos="0" vertpos="${idx * 1000}" vertsize="1000" textheight="1000" baseline="850" spacing="600" horzpos="0" horzsize="28344" flags="393216"/>
+            <hp:lineseg textpos="0" vertpos="${idx * 1000}" vertsize="1000" textheight="1000" baseline="850" spacing="600" horzpos="${horzpos}" horzsize="28344" flags="393216"/>
           </hp:linesegarray>
         </hp:p>`;
     }).join('');
