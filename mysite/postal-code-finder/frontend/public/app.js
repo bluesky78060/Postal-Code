@@ -4,6 +4,7 @@
   // 라벨 관련 전역 변수
   let labelData = null;
   let fieldMappings = {};
+  let currentLabelJobId = null;
 
   function switchTab(tabName, clickedButton) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -233,6 +234,7 @@
       
       if (data.success) {
         const jobId = data.data.jobId;
+        currentLabelJobId = jobId;
         console.log('JobID:', jobId);
         updateLabelProgress(10, '파일 처리 중...');
         await waitForLabelProcessing(jobId);
@@ -531,6 +533,34 @@
     window.print();
   }
 
+  async function downloadHwpx() {
+    try {
+      if (!currentLabelJobId) {
+        alert('먼저 라벨 데이터를 업로드/처리해 주세요.');
+        return;
+      }
+      const nameSuffix = document.getElementById('nameSuffix')?.value || '';
+      const url = `${API_BASE}/file/hwpx/${currentLabelJobId}?nameSuffix=${encodeURIComponent(nameSuffix)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || '다운로드 실패');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `labels_${currentLabelJobId}.hwpx`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(objectUrl);
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('HWPX 다운로드 실패:', e);
+      alert('HWPX 다운로드 중 오류가 발생했습니다: ' + e.message);
+    }
+  }
+
   function downloadPDF() {
     // PDF 생성은 추후 구현
     alert('PDF 다운로드 기능은 준비 중입니다.');
@@ -635,6 +665,9 @@
     // 라벨 인쇄 버튼
     document.getElementById('btnPrintLabels').addEventListener('click', printLabels);
     
+    // HWPX 다운로드 버튼
+    document.getElementById('btnDownloadHWPX').addEventListener('click', downloadHwpx);
+
     // PDF 다운로드 버튼
     document.getElementById('btnDownloadPDF').addEventListener('click', downloadPDF);
     
