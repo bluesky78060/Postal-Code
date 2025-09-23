@@ -2,9 +2,7 @@
   "version": 2,
   "functions": {
     "api/index.js": {
-      "includeFiles": [
-        "docs/sample_hwpx/**"
-      ]
+      "includeFiles": "docs/sample_hwpx/**"
     }
   },
   "routes": [
