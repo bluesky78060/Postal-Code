@@ -1,6 +1,5 @@
 {
   "version": 2,
-  
   "functions": {
     "api/index.js": {
       "includeFiles": [
@@ -21,8 +20,5 @@
       "src": "/(.*)",
       "dest": "/public/$1"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
