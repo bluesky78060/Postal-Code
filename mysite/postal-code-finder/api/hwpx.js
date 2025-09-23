@@ -35,12 +35,26 @@ function buildSectionXml(rows, options = {}) {
   }
 
   function cellXml(texts, cellId) {
-    // 실제 텍스트 내용을 포함한 3줄(주소, 이름, 우편번호) 생성
+    // 실제 텍스트 내용을 포함한 3줄 생성 (주소: 왼쪽정렬, 이름: 가운데정렬, 우편번호: 오른쪽정렬)
+    const alignments = ['LEFT', 'CENTER', 'RIGHT']; // 주소, 이름, 우편번호 순서
+    const paraPrIds = [11, 0, 0]; // LEFT=11(header.xml의 LEFT 정렬 ID), CENTER와 RIGHT는 인라인으로 정의
+    
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
       const pid = `${cellId}_${idx}`;
+      const alignment = alignments[idx] || 'LEFT';
+      const paraPrId = paraPrIds[idx];
+      
+      // 인라인 정렬 설정 (CENTER, RIGHT용)
+      let alignAttr = '';
+      if (alignment === 'CENTER') {
+        alignAttr = ' horizontalAlign="CENTER"';
+      } else if (alignment === 'RIGHT') {
+        alignAttr = ' horizontalAlign="RIGHT"';
+      }
+      
       return `
-        <hp:p id="${pid}" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
+        <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"${alignAttr}>
           <hp:run charPrIDRef="0">
             <hp:t>${escapeXml(content)}</hp:t>
           </hp:run>
