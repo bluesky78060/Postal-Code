@@ -1,0 +1,3 @@
+Deploy trigger at 19:39:11
+Force rebuild with JavaScript content-type fix
+Commit: d14c6ec
