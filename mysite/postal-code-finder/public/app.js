@@ -711,9 +711,69 @@
     }
   }
 
-  function downloadPDF() {
-    // PDF 생성은 추후 구현
-    alert('PDF 다운로드 기능은 준비 중입니다.');
+  async function downloadPDF() {
+    try {
+      // 라벨 페이지 존재 확인
+      const sheet = document.getElementById('labelSheet');
+      const pages = sheet ? sheet.querySelectorAll('.label-page') : null;
+      if (!pages || pages.length === 0) {
+        alert('먼저 라벨을 생성해 주세요.');
+        return;
+      }
+
+      // 동적 스크립트 로더
+      const loadScript = (src) => new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('스크립트 로드 실패: ' + src));
+        document.head.appendChild(s);
+      });
+
+      // 라이브러리 로드 (필요 시)
+      if (typeof window.html2canvas !== 'function') {
+        await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+      }
+      if (!window.jspdf || typeof window.jspdf.jsPDF !== 'function') {
+        await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+      // 캡처 품질 설정
+      const scale = 2; // Retina 품질 향상
+      const opts = { scale, backgroundColor: '#ffffff' };
+
+      // 미리보기 스케일 제거 후 캡처 (원래대로 복구)
+      const originalTransform = sheet.style.transform;
+      sheet.style.transform = 'none';
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        // 화면에 보이도록 잠시 스크롤
+        page.scrollIntoView({ block: 'center' });
+        // 렌더링 대기
+        await new Promise(r => setTimeout(r, 50));
+
+        const canvas = await window.html2canvas(page, opts);
+        const imgData = canvas.toDataURL('image/png');
+        // A4 사이즈(mm)
+        const pageWidth = 210;
+        const pageHeight = 297;
+        if (i > 0) doc.addPage('a4', 'p');
+        doc.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+      }
+
+      // 원복
+      sheet.style.transform = originalTransform;
+
+      const name = currentLabelJobId ? `labels_${currentLabelJobId}.pdf` : `labels_${Date.now()}.pdf`;
+      doc.save(name);
+    } catch (e) {
+      console.error('PDF 생성 실패:', e);
+      alert('PDF 생성 중 오류가 발생했습니다: ' + e.message);
+    }
   }
 
   function resetLabelUI() {
