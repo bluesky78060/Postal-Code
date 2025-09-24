@@ -429,13 +429,11 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
           if (common?.errorCode === '0' && results.juso?.[0]) {
             const juso = results.juso[0];
             const baseFull = juso.roadAddr || juso.jibunAddr || '';
-            const suffix = extractDongHo(address);
-            const fullWithDongHo = suffix && !baseFull.includes(suffix) ? `${baseFull} ${suffix}` : baseFull;
             jobData.results.push({
               row: i + 2,
               originalAddress: address,
               postalCode: juso.zipNo || '',
-              fullAddress: fullWithDongHo,
+              fullAddress: baseFull,
               sido: juso.siNm || '',
               sigungu: juso.sggNm || ''
             });
@@ -476,6 +474,7 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         const existingColumns = headers.map(h => String(h).toLowerCase());
         const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
         const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
+        const hasDetail = existingColumns.some(col => col.includes('상세'));
         // '시도', '시군구' 컬럼 제거 후 우편번호/도로명주소만 추가
         const removeHeader = (h) => {
           const s = String(h || '').toLowerCase();
@@ -485,8 +484,9 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         const keepIndices = headers.map((h, i) => ({ h, i })).filter(x => !removeHeader(x.h)).map(x => x.i);
         const baseHeaders = keepIndices.map(i => headers[i]);
         const newHeaders = [...baseHeaders];
-        if (!hasPostalCode) newHeaders.push('우편번호');
         if (!hasFullAddress) newHeaders.push('도로명주소');
+        if (!hasDetail) newHeaders.push('상세주소');
+        if (!hasPostalCode) newHeaders.push('우편번호');
 
         console.log('Original headers:', headers);
         console.log('Existing columns lowercase:', existingColumns);
@@ -501,15 +501,18 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
           const result = jobData.results.find(r => r.row === index + 2);
           const sourceRow = Array.isArray(row) ? row : Object.values(row || {});
           const newRow = keepIndices.map(i => sourceRow[i] ?? '');
+          const detail = extractDongHo(sourceRow[addressColumnIndex]);
           
           // 중복되지 않는 컬럼들만 추가
           if (result) {
-            if (!hasPostalCode) newRow.push(result.postalCode || '');
             if (!hasFullAddress) newRow.push(result.fullAddress || '');
+            if (!hasDetail) newRow.push(detail || '');
+            if (!hasPostalCode) newRow.push(result.postalCode || '');
           } else {
             // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
-            if (!hasPostalCode) newRow.push('');
             if (!hasFullAddress) newRow.push('');
+            if (!hasDetail) newRow.push(detail || '');
+            if (!hasPostalCode) newRow.push('');
           }
           
           resultData.push(newRow);
@@ -629,13 +632,11 @@ app.get('/api/file/status/:jobId', async (req, res) => {
             if (common?.errorCode === '0' && results.juso?.[0]) {
               const juso = results.juso[0];
               const baseFull = juso.roadAddr || juso.jibunAddr || '';
-              const suffix = extractDongHo(address);
-              const fullWithDongHo = suffix && !baseFull.includes(suffix) ? `${baseFull} ${suffix}` : baseFull;
               job.results.push({
                 row: i + 2,
                 originalAddress: address,
                 postalCode: juso.zipNo || '',
-                fullAddress: fullWithDongHo,
+                fullAddress: baseFull,
                 sido: juso.siNm || '',
                 sigungu: juso.sggNm || ''
               });
@@ -734,6 +735,7 @@ app.get('/api/file/download/:jobId', (req, res) => {
       const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
       const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
       const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
+      const hasDetail = existingColumns.some(col => col.includes('상세'));
       // '시도', '시군구' 제거 후 우편번호/도로명주소만 추가
       const removeHeader = (h) => {
         const s = String(h || '').toLowerCase();
@@ -743,8 +745,9 @@ app.get('/api/file/download/:jobId', (req, res) => {
       const keepIndices = safeHeaders.map((h, i) => ({ h, i })).filter(x => !removeHeader(x.h)).map(x => x.i);
       const baseHeaders = keepIndices.map(i => safeHeaders[i]);
       const newHeaders = [...baseHeaders];
-      if (!hasPostalCode) newHeaders.push('우편번호');
       if (!hasFullAddress) newHeaders.push('도로명주소');
+      if (!hasDetail) newHeaders.push('상세주소');
+      if (!hasPostalCode) newHeaders.push('우편번호');
       
       // 결과 데이터를 엑셀 형식으로 변환
       const resultData = [newHeaders];
@@ -754,16 +757,21 @@ app.get('/api/file/download/:jobId', (req, res) => {
         job.rows.forEach((row, index) => {
           const result = job.results?.find(r => r.row === index + 2);
           const sourceRow = Array.isArray(row) ? row : Object.values(row || {});
+          // 주소 컬럼 자동 탐색 (시/군/구 제거 이후에도 유지)
+          const addrIdx = safeHeaders.findIndex(h => typeof h === 'string' && (h.includes('주소') || /addr|address/i.test(h)));
           const newRow = keepIndices.map(i => sourceRow[i] ?? '');
+          const detail = extractDongHo(addrIdx >= 0 ? sourceRow[addrIdx] : '');
           
           // 중복되지 않는 컬럼들만 추가
           if (result) {
-            if (!hasPostalCode) newRow.push(result.postalCode || '');
             if (!hasFullAddress) newRow.push(result.fullAddress || '');
+            if (!hasDetail) newRow.push(detail || '');
+            if (!hasPostalCode) newRow.push(result.postalCode || '');
           } else {
             // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
-            if (!hasPostalCode) newRow.push('');
             if (!hasFullAddress) newRow.push('');
+            if (!hasDetail) newRow.push(detail || '');
+            if (!hasPostalCode) newRow.push('');
           }
           
           resultData.push(newRow);
@@ -820,6 +828,7 @@ app.get('/api/file/label-data/:jobId', (req, res) => {
     const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
     const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
     const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
+    const hasDetail = existingColumns.some(col => col.includes('상세'));
     // '시도', '시군구' 제거 후 우편번호/도로명주소만 추가
     const removeHeader = (h) => {
       const s = String(h || '').toLowerCase();
@@ -829,20 +838,25 @@ app.get('/api/file/label-data/:jobId', (req, res) => {
     const keepIndices = safeHeaders.map((h, i) => ({ h, i })).filter(x => !removeHeader(x.h)).map(x => x.i);
     const baseHeaders = keepIndices.map(i => safeHeaders[i]);
     const newHeaders = [...baseHeaders];
-    if (!hasPostalCode) newHeaders.push('우편번호');
     if (!hasFullAddress) newHeaders.push('도로명주소');
+    if (!hasDetail) newHeaders.push('상세주소');
+    if (!hasPostalCode) newHeaders.push('우편번호');
 
     const rows = Array.isArray(job.rows) ? job.rows : [];
     const resultRows = rows.map((row, index) => {
       const result = job.results?.find(r => r.row === index + 2);
       const sourceRow = Array.isArray(row) ? row : Object.values(row || {});
+      const addrIdx = safeHeaders.findIndex(h => typeof h === 'string' && (h.includes('주소') || /addr|address/i.test(h)));
       const newRow = keepIndices.map(i => sourceRow[i] ?? '');
+      const detail = extractDongHo(addrIdx >= 0 ? sourceRow[addrIdx] : '');
       if (result) {
-        if (!hasPostalCode) newRow.push(result.postalCode || '');
         if (!hasFullAddress) newRow.push(result.fullAddress || '');
+        if (!hasDetail) newRow.push(detail || '');
+        if (!hasPostalCode) newRow.push(result.postalCode || '');
       } else {
-        if (!hasPostalCode) newRow.push('');
         if (!hasFullAddress) newRow.push('');
+        if (!hasDetail) newRow.push(detail || '');
+        if (!hasPostalCode) newRow.push('');
       }
       return newRow;
     });
