@@ -12,10 +12,14 @@ function extractDongHo(input) {
     if (!input) return '';
     const s = String(input);
     // 주의: JS \b는 한글 경계에 안전하지 않으므로 공백/문자열끝을 경계로 사용
-    const mDong = s.match(/(\d+(?:-\d+)?)\s*동(?=\s|$)/i);
+    // 1) 숫자 동 (예: 102동)
+    const mDongNum = s.match(/(\d+(?:-\d+)?)\s*동(?=\s|$)/i);
+    // 2) 문자 동 (예: 가동, 나동, A동, B동) — 한 글자만 허용해 '휴천동' 같은 행정동 오탐 방지
+    const mDongAlpha = s.match(/(?:^|\s)([A-Za-z가-힣])\s*동(?=\s|$)/);
     const mHo = s.match(/(\d+(?:-\d+)?)\s*호(?=\s|$)/i);
     const parts = [];
-    if (mDong) parts.push(`${mDong[1]}동`);
+    if (mDongNum) parts.push(`${mDongNum[1]}동`);
+    else if (mDongAlpha) parts.push(`${mDongAlpha[1]}동`);
     if (mHo) parts.push(`${mHo[1]}호`);
     return parts.join(' ');
   } catch (_) { return ''; }
