@@ -867,20 +867,24 @@ app.get('/api/file/hwpx/:jobId', async (req, res) => {
     const cols = detectColumns(headers);
 
     // rows + results를 합쳐 최종 표시 데이터 구성
+    // 주소는 항상 도로명주소(결과 fullAddress: roadAddr 우선)를 우선 사용
     const items = rows.map((row, idx) => {
       const arr = Array.isArray(row) ? row : Object.values(row || {});
       const get = i => (i >= 0 && i < arr.length) ? String(arr[i] || '') : '';
-      let address = get(cols.address);
+      const r = job.results?.find(r => r.row === idx + 2);
+      
+      // 1) 주소: 결과의 fullAddress(roadAddr 우선)를 최우선 사용, 없으면 원본 컬럼
+      let address = r?.fullAddress || get(cols.address) || '';
+
+      // 2) 성명: 원본 컬럼 우선
       let name = get(cols.name);
+
+      // 3) 우편번호: 원본 컬럼 없으면 결과값 사용
       let postalCode = get(cols.postalCode);
       if (!postalCode) {
-        const r = job.results?.find(r => r.row === idx + 2);
         postalCode = r?.postalCode || '';
       }
-      if (!address) {
-        const r = job.results?.find(r => r.row === idx + 2);
-        address = r?.fullAddress || '';
-      }
+
       return { address, name, postalCode };
     });
 
