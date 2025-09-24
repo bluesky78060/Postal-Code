@@ -252,4 +252,28 @@ async function buildHwpxFromTemplate(items, options = {}) {
   return buffer;
 }
 
-module.exports = { buildHwpxFromTemplate, detectColumns };
+async function buildHwpxFromHwpxTemplate(templateHwpxPath, items, options = {}) {
+  const absPath = path.isAbsolute(templateHwpxPath)
+    ? templateHwpxPath
+    : path.join(__dirname, '..', templateHwpxPath);
+
+  if (!fs.existsSync(absPath)) {
+    throw new Error(`템플릿 파일을 찾을 수 없습니다: ${absPath}`);
+  }
+
+  // 템플릿 .hwpx 로드
+  const raw = fs.readFileSync(absPath);
+  const zip = await JSZip.loadAsync(raw);
+
+  // 새 섹션 XML 생성 (템플릿 스타일/마진은 템플릿에 포함되었다고 가정)
+  const sectionXml = buildSectionXml(items, options);
+
+  // 기존 섹션 교체
+  zip.file('Contents/section0.xml', sectionXml);
+
+  // 결과 버퍼 생성
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  return buffer;
+}
+
+module.exports = { buildHwpxFromTemplate, buildHwpxFromHwpxTemplate, detectColumns };

@@ -944,7 +944,9 @@ app.get('/api/file/hwpx/:jobId', async (req, res) => {
       return res.status(400).json({ success: false, error: '작업이 완료되지 않았습니다.' });
     }
 
-    const { buildHwpxFromTemplate, detectColumns } = require('./hwpx');
+    const fs = require('fs');
+    const path = require('path');
+    const { buildHwpxFromTemplate, buildHwpxFromHwpxTemplate, detectColumns } = require('./hwpx');
     const headers = Array.isArray(job.headers) ? job.headers : [];
     const rows = Array.isArray(job.rows) ? job.rows : [];
     const cols = detectColumns(headers);
@@ -986,7 +988,27 @@ app.get('/api/file/hwpx/:jobId', async (req, res) => {
       return { address, detailAddress, name, postalCode };
     });
 
-    const buf = await buildHwpxFromTemplate(items, { nameSuffix });
+    // 템플릿 선택: 쿼리 ?template= 경로 또는 기본 템플릿 존재 시 사용
+    let templateParam = (req.query.template || '').trim();
+    let candidatePaths = [];
+    if (templateParam) {
+      // 절대경로 또는 프로젝트 상대 경로 허용
+      candidatePaths.push(templateParam);
+      candidatePaths.push(path.join(__dirname, '..', templateParam));
+    }
+    // 기본 경로 후보: docs/sample_hwpx/템플릿.hwpx
+    candidatePaths.push(path.join(__dirname, '..', 'docs', 'sample_hwpx', '템플릿.hwpx'));
+
+    let selectedTemplate = candidatePaths.find(p => {
+      try { return fs.existsSync(p); } catch { return false; }
+    });
+
+    let buf;
+    if (selectedTemplate) {
+      buf = await buildHwpxFromHwpxTemplate(selectedTemplate, items, { nameSuffix });
+    } else {
+      buf = await buildHwpxFromTemplate(items, { nameSuffix });
+    }
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="labels_${jobId}.hwpx"`);
     return res.send(buf);
