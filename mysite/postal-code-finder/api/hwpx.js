@@ -40,8 +40,8 @@ function buildSectionXml(rows, options = {}) {
       const pid = `${cellId}_${idx}`;
       const paraPrId = paraPrIds[idx];
       
-      // 강제 정렬을 위해 인라인 hp:paraPr align도 함께 지정 (안전성 향상)
-      const inlineAlign = idx === 0 ? 'LEFT' : 'RIGHT';
+      // 텍스트별 정렬: 주소(왼쪽), 이름(오른쪽), 우편번호(가운데)
+      const inlineAlign = idx === 0 ? 'LEFT' : idx === 1 ? 'RIGHT' : 'CENTER';
       return `
         <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
           <hp:paraPr align="${inlineAlign}"/>
@@ -59,7 +59,7 @@ function buildSectionXml(rows, options = {}) {
         <hp:cellAddr colAddr="${cellId % 2}" rowAddr="${Math.floor(cellId / 2)}"/>
         <hp:cellSpan colSpan="1" rowSpan="1"/>
         <hp:cellSz width="28772" height="8504"/>
-        <!-- 모든 셀 동일 여백(4pt = 400 HWPUNIT) -->
+        <!-- 셀 여백: 좌우 4pt(400 HWPUNIT), 상하 0pt -->
         <hp:cellMargin left="400" right="400" top="0" bottom="0"/>
       </hp:tc>`;
   }
@@ -161,7 +161,7 @@ async function buildHwpxFromTemplate(items, options = {}) {
   };
 
   // Section content - 동적 ID들을 전달
-  const paraPrIds = [newParaIdLeft, newParaIdRight, newParaIdRight]; // 주소(왼쪽), 이름(오른쪽), 우편번호(오른쪽)
+  const paraPrIds = [newParaIdLeft, newParaIdRight, newParaIdCenter]; // 주소(왼쪽), 이름(오른쪽), 우편번호(가운데)
   const sectionXml = buildSectionXml(items, { 
     ...options, 
     newCharId, 
