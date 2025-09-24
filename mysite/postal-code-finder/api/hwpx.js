@@ -22,6 +22,7 @@ function detectColumns(headers) {
   }
   return {
     address: findOne(['주소', 'address', 'addr', 'road', '도로']),
+    detailAddress: findOne(['상세', 'detail']),
     name: findOne(['이름', '성명', 'name']),
     postalCode: findOne(['우편번호', 'zip', 'postal'])
   };
@@ -38,10 +39,9 @@ function buildSectionXml(rows, options = {}) {
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
       const pid = `${cellId}_${idx}`;
-      const paraPrId = paraPrIds[idx];
-      
-      // 텍스트별 정렬: 주소(왼쪽), 이름(오른쪽), 우편번호(가운데)
-      const inlineAlign = idx === 0 ? 'LEFT' : idx === 1 ? 'RIGHT' : 'CENTER';
+      // 텍스트별 정렬: 주소,상세주소=LEFT / 이름,우편번호=RIGHT
+      const inlineAlign = idx <= 1 ? 'LEFT' : 'RIGHT';
+      const paraPrId = inlineAlign === 'LEFT' ? paraPrIds[0] : paraPrIds[1];
       return `
         <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
           <hp:paraPr align="${inlineAlign}"/>
@@ -73,18 +73,20 @@ function buildSectionXml(rows, options = {}) {
       const left = pageItems[r * 2];
       const right = pageItems[r * 2 + 1];
       
-      // 실제 데이터로 텍스트 생성
+      // 실제 데이터로 텍스트 생성 (주소, 상세주소, 이름, 우편번호)
       const leftTexts = left ? [
-        left.address || '', 
-        (left.name || '') + (nameSuffix ? ` ${nameSuffix}` : ''), 
+        left.address || '',
+        left.detailAddress || '',
+        (left.name || '') + (nameSuffix ? ` ${nameSuffix}` : ''),
         left.postalCode || ''
-      ] : ['', '', ''];
+      ] : ['', '', '', ''];
       
       const rightTexts = right ? [
-        right.address || '', 
-        (right.name || '') + (nameSuffix ? ` ${nameSuffix}` : ''), 
+        right.address || '',
+        right.detailAddress || '',
+        (right.name || '') + (nameSuffix ? ` ${nameSuffix}` : ''),
         right.postalCode || ''
-      ] : ['', '', ''];
+      ] : ['', '', '', ''];
       
       trs += `
         <hp:tr>
@@ -161,7 +163,7 @@ async function buildHwpxFromTemplate(items, options = {}) {
   };
 
   // Section content - 동적 ID들을 전달
-  const paraPrIds = [newParaIdLeft, newParaIdRight, newParaIdCenter]; // 주소(왼쪽), 이름(오른쪽), 우편번호(가운데)
+  const paraPrIds = [newParaIdLeft, newParaIdRight, newParaIdRight]; // 주소(왼쪽), 이름(오른쪽), 우편번호(오른쪽)
   const sectionXml = buildSectionXml(items, { 
     ...options, 
     newCharId, 
