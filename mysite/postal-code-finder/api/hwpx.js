@@ -104,9 +104,16 @@ function buildSectionXml(rows, options = {}) {
       </hp:tbl>`;
   }
 
-  // 모든 페이지에 대해 테이블 생성
+  // 모든 페이지에 대해 테이블 생성 (페이지 구분자 포함)
   const allTables = pages.map((pageItems, pageIndex) => {
-    return pageTable(pageItems, pageIndex);
+    const table = pageTable(pageItems, pageIndex);
+    // 첫 번째 페이지가 아니면 페이지 나누기 추가
+    if (pageIndex > 0) {
+      const pageBreakId = 3121190098 + pageIndex;
+      const pageBreak = `<hp:p id="${pageBreakId}" paraPrIDRef="0" styleIDRef="0" pageBreak="1" columnBreak="0" merged="0"><hp:run charPrIDRef="0"><hp:t/></hp:run></hp:p>`;
+      return pageBreak + table;
+    }
+    return table;
   }).join('');
 
   // 샘플과 동일한 구조로 생성 (섹션 속성과 모든 테이블 포함)
