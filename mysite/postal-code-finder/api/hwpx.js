@@ -38,19 +38,27 @@ function buildSectionXml(rows, options = {}) {
     // 사용자 요청에 따라 주소는 왼쪽, 이름과 우편번호는 오른쪽 정렬
     const paraPrIds = [20, 21, 21]; // 주소(20=왼쪽), 이름(21=오른쪽), 우편번호(21=오른쪽)
     
+    // 셀 높이 8504에서 3줄 텍스트를 세로 가운데 정렬하기 위한 수동 계산
+    const cellHeight = 8504;
+    const lineHeight = 1200;
+    const totalTextHeight = 3 * lineHeight;
+    const startOffset = Math.round((cellHeight - totalTextHeight) / 2);
+    
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
       const pid = `${cellId}_${idx}`;
       const paraPrId = paraPrIds[idx];
       
-      // vertpos를 0으로 설정하여 자동 세로 정렬 활용
+      // 각 줄의 세로 위치를 수동으로 계산하여 정확한 가운데 정렬
+      const vertPos = startOffset + (idx * lineHeight);
+      
       return `
         <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
           <hp:run charPrIDRef="7">
             <hp:t>${escapeXml(content)}</hp:t>
           </hp:run>
           <hp:linesegarray>
-            <hp:lineseg textpos="0" vertpos="0" vertsize="1200" textheight="1200" baseline="1020" spacing="720" horzpos="0" horzsize="28344" flags="393216"/>
+            <hp:lineseg textpos="0" vertpos="${vertPos}" vertsize="1200" textheight="1200" baseline="1020" spacing="720" horzpos="0" horzsize="28344" flags="393216"/>
           </hp:linesegarray>
         </hp:p>`;
     }).join('');
