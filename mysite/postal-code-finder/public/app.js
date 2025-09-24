@@ -524,8 +524,25 @@
     const fields = [
       { key: 'name', label: '이름' },
       { key: 'address', label: '주소' },
+      { key: 'detailAddress', label: '상세주소' },
       { key: 'postalCode', label: '우편번호' }
     ];
+
+    function isDefaultSelected(fieldKey, col) {
+      const lc = String(col || '').toLowerCase();
+      switch (fieldKey) {
+        case 'name':
+          return lc.includes('이름') || lc.includes('name');
+        case 'address':
+          return lc.includes('주소') || lc.includes('address') || lc.includes('addr') || lc.includes('도로명');
+        case 'detailAddress':
+          return lc.includes('상세') || lc.includes('detail');
+        case 'postalCode':
+          return lc.includes('우편') || lc.includes('postal') || lc.includes('zip');
+        default:
+          return false;
+      }
+    }
 
     let html = '';
     fields.forEach(field => {
@@ -534,7 +551,7 @@
           <label>${field.label}:</label>
           <select data-field="${field.key}">
             <option value="">선택 안함</option>
-            ${columns.map(col => `<option value="${col}" ${col.toLowerCase().includes(field.key.toLowerCase()) ? 'selected' : ''}>${col}</option>`).join('')}
+            ${columns.map(col => `<option value="${col}" ${isDefaultSelected(field.key, col) ? 'selected' : ''}>${col}</option>`).join('')}
           </select>
         </div>
       `;
@@ -601,17 +618,20 @@
       const end = Math.min(start + perPage, total);
       for (let i = start; i < end; i++) {
         const rowData = dataRows[i];
-        let name = '', address = '', postalCode = '';
+        let name = '', address = '', detailAddress = '', postalCode = '';
         if (typeof rowData === 'object' && !Array.isArray(rowData)) {
           name = fieldMappings.name ? rowData[fieldMappings.name] || '' : '';
           address = fieldMappings.address ? rowData[fieldMappings.address] || '' : '';
+          detailAddress = fieldMappings.detailAddress ? rowData[fieldMappings.detailAddress] || '' : '';
           postalCode = fieldMappings.postalCode ? rowData[fieldMappings.postalCode] || '' : '';
         } else if (Array.isArray(rowData)) {
           const nameIndex = headers.indexOf(fieldMappings.name);
           const addressIndex = headers.indexOf(fieldMappings.address);
+          const detailIndex = headers.indexOf(fieldMappings.detailAddress);
           const postalCodeIndex = headers.indexOf(fieldMappings.postalCode);
           name = nameIndex >= 0 ? rowData[nameIndex] || '' : '';
           address = addressIndex >= 0 ? rowData[addressIndex] || '' : '';
+          detailAddress = detailIndex >= 0 ? rowData[detailIndex] || '' : '';
           postalCode = postalCodeIndex >= 0 ? rowData[postalCodeIndex] || '' : '';
         }
         const nameSuffix = document.getElementById('nameSuffix')?.value || '';
@@ -634,6 +654,7 @@
         html += `
           <div class="label-item" style="left: ${left}; top: ${top};">
             <div class="address">${address}</div>
+            ${detailAddress ? `<div class="detail-address">${detailAddress}</div>` : ''}
             <div class="name">${name}</div>
             <div class="postal-code">${postalCode}</div>
           </div>
