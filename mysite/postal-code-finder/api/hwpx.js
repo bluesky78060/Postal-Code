@@ -52,7 +52,7 @@ function buildSectionXml(rows, options = {}) {
     
     return `
       <hp:tc name="" header="0" hasMargin="1" protect="0" editable="0" dirty="0" borderFillIDRef="4">
-        <hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="MIDDLE" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">
+        <hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">
           ${paragraphs}
         </hp:subList>
         <hp:cellAddr colAddr="${cellId % 2}" rowAddr="${Math.floor(cellId / 2)}"/>
@@ -110,9 +110,7 @@ function buildSectionXml(rows, options = {}) {
       return `
   <hp:p paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
     <hp:run charPrIDRef="0">
-      <hp:ctrl>
-        ${pageTable(pageItems, pageIndex)}
-      </hp:ctrl>
+      ${pageTable(pageItems, pageIndex)}
     </hp:run>
   </hp:p>`;
     })
