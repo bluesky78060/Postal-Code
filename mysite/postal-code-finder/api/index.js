@@ -25,6 +25,65 @@ function extractDongHo(input) {
   } catch (_) { return ''; }
 }
 
+// 라벨 HTML (2열 x 9행) SSR 생성: 주소, 상세주소, 이름(+호칭), 우편번호
+function buildLabelHtml(items = [], { nameSuffix = '' } = {}) {
+  // 한 페이지당 18개 (2x9)
+  const perPage = 18;
+  const pages = [];
+  for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage));
+
+  function renderPage(pageItems) {
+    let cells = '';
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 2; c++) {
+        const idx = r * 2 + c;
+        const it = pageItems[idx] || {};
+        const addr = it.address || '';
+        const detail = it.detailAddress || '';
+        const nm = (it.name || '') + (nameSuffix ? ` ${nameSuffix}` : '');
+        const zip = it.postalCode || '';
+        cells += `
+        <div class="label-item">
+          <div class="addr">${escapeHtml(addr)}</div>
+          ${detail ? `<div class="detail">${escapeHtml(detail)}</div>` : ''}
+          <div class="name">${escapeHtml(nm)}</div>
+          <div class="zip">${escapeHtml(zip)}</div>
+        </div>`;
+      }
+    }
+    return `<div class="label-page">${cells}</div>`;
+  }
+
+  const pagesHtml = pages.map(renderPage).join('\n');
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"/>
+<style>
+  @page { size: A4; margin: 0; }
+  html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; }
+  .sheet { width: 210mm; margin: 0 auto; }
+  .label-page { position: relative; width: 210mm; height: 297mm; page-break-after: always; box-sizing: border-box; padding: 8mm 0 12mm 5mm; }
+  .label-item { position: absolute; width: 100mm; height: 30mm; box-sizing: border-box; padding: 3mm; display: flex; flex-direction: column; justify-content: space-between; }
+  /* 그리드 배치: 2열 9행 */
+  ${Array.from({length: 18}).map((_,i)=>{
+    const row=Math.floor(i/2), col=i%2; const left = col===0?0:103; const top = row*30; 
+    return `.label-item:nth-of-type(${i+1}){ left:${left}mm; top:${top}mm; }`;}).join('\n')}
+  .addr{ font: 12pt/1.35 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; text-align:left; }
+  .detail{ font: 11pt/1.3 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; text-align:left; }
+  .name{ font: 14pt/1.2 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; text-align:right; font-weight:700; }
+  .zip{ font: 13pt/1.2 'Courier New', monospace; letter-spacing:2px; text-align:right; }
+</style></head>
+<body><div class="sheet">${pagesHtml}</div></body></html>`;
+}
+
+function escapeHtml(s='') {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
 // 설정 파일 가져오기 (Vercel 환경 고려)
 let config;
 try {
