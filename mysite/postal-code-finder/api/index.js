@@ -11,8 +11,9 @@ function extractDongHo(input) {
   try {
     if (!input) return '';
     const s = String(input);
-    const mDong = s.match(/(\d+(?:-\d+)?)\s*동\b/i);
-    const mHo = s.match(/(\d+(?:-\d+)?)\s*호\b/i);
+    // 주의: JS \b는 한글 경계에 안전하지 않으므로 공백/문자열끝을 경계로 사용
+    const mDong = s.match(/(\d+(?:-\d+)?)\s*동(?=\s|$)/i);
+    const mHo = s.match(/(\d+(?:-\d+)?)\s*호(?=\s|$)/i);
     const parts = [];
     if (mDong) parts.push(`${mDong[1]}동`);
     if (mHo) parts.push(`${mHo[1]}호`);
