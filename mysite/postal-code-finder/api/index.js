@@ -896,6 +896,8 @@ app.get('/api/file/hwpx/:jobId', async (req, res) => {
     const headers = Array.isArray(job.headers) ? job.headers : [];
     const rows = Array.isArray(job.rows) ? job.rows : [];
     const cols = detectColumns(headers);
+    console.log('HWPX: Column detection result:', cols);
+    console.log('HWPX: Headers:', headers);
 
     // rows + results를 합쳐 최종 표시 데이터 구성
     // 주소는 항상 도로명주소(결과 fullAddress: roadAddr 우선)를 우선 사용 + 상세주소 컬럼 전달
@@ -908,6 +910,17 @@ app.get('/api/file/hwpx/:jobId', async (req, res) => {
       let address = r?.fullAddress || get(cols.address) || '';
       // 상세주소: 컬럼이 있으면 그대로 전달
       let detailAddress = get(cols.detailAddress);
+      
+      // 디버그 로깅 (첫 5개 행만)
+      if (idx < 5) {
+        console.log(`HWPX Row ${idx}:`, {
+          detailAddressCol: cols.detailAddress,
+          detailAddress,
+          rawRow: arr,
+          address,
+          name: get(cols.name)
+        });
+      }
 
       // 2) 성명: 원본 컬럼 우선
       let name = get(cols.name);

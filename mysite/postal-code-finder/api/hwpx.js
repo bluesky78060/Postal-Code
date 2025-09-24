@@ -22,7 +22,7 @@ function detectColumns(headers) {
   }
   return {
     address: findOne(['주소', 'address', 'addr', 'road', '도로']),
-    detailAddress: findOne(['상세', 'detail']),
+    detailAddress: findOne(['상세주소', '상세', 'detail', '세부주소', '추가주소', '아파트', '동호수', '호수', '동', '층', '호']),
     name: findOne(['이름', '성명', 'name']),
     postalCode: findOne(['우편번호', 'zip', 'postal'])
   };

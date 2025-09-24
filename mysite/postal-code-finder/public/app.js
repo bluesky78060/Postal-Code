@@ -536,7 +536,10 @@
         case 'address':
           return lc.includes('주소') || lc.includes('address') || lc.includes('addr') || lc.includes('도로명');
         case 'detailAddress':
-          return lc.includes('상세') || lc.includes('detail');
+          return lc.includes('상세주소') || lc.includes('상세') || lc.includes('detail') || 
+                 lc.includes('세부주소') || lc.includes('추가주소') || lc.includes('아파트') || 
+                 lc.includes('동호수') || lc.includes('호수') || lc.includes('동') || 
+                 lc.includes('층') || lc.includes('호');
         case 'postalCode':
           return lc.includes('우편') || lc.includes('postal') || lc.includes('zip');
         default:
