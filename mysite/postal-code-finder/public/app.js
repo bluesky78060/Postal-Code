@@ -654,10 +654,12 @@
         // 각 행: top = row * 30mm
         const top = (row * 30) + 'mm';
         
+        // 주소와 상세주소를 합쳐서 출력
+        const fullAddress = address + (detailAddress ? ` ${detailAddress}` : '');
+        
         html += `
           <div class="label-item" style="left: ${left}; top: ${top};">
-            <div class="address">${address}</div>
-            ${detailAddress ? `<div class="detail-address">${detailAddress}</div>` : ''}
+            <div class="address">${fullAddress}</div>
             <div class="name">${name}</div>
             <div class="postal-code">${postalCode}</div>
           </div>

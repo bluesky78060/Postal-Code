@@ -39,8 +39,8 @@ function buildSectionXml(rows, options = {}) {
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
       const pid = `${cellId}_${idx}`;
-      // 텍스트별 정렬: 주소,상세주소=LEFT / 이름,우편번호=RIGHT
-      const inlineAlign = idx <= 1 ? 'LEFT' : 'RIGHT';
+      // 텍스트별 정렬: 주소(합쳐진)=LEFT / 이름,우편번호=RIGHT
+      const inlineAlign = idx === 0 ? 'LEFT' : 'RIGHT';
       const paraPrId = inlineAlign === 'LEFT' ? paraPrIds[0] : paraPrIds[1];
       return `
         <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
@@ -73,20 +73,18 @@ function buildSectionXml(rows, options = {}) {
       const left = pageItems[r * 2];
       const right = pageItems[r * 2 + 1];
       
-      // 실제 데이터로 텍스트 생성 (주소, 상세주소, 이름, 우편번호)
+      // 실제 데이터로 텍스트 생성 (주소+상세주소, 이름, 우편번호)
       const leftTexts = left ? [
-        left.address || '',
-        left.detailAddress || '',
+        (left.address || '') + (left.detailAddress ? ` ${left.detailAddress}` : ''),
         (left.name || '') + (nameSuffix ? ` ${nameSuffix}` : ''),
         left.postalCode || ''
-      ] : ['', '', '', ''];
+      ] : ['', '', ''];
       
       const rightTexts = right ? [
-        right.address || '',
-        right.detailAddress || '',
+        (right.address || '') + (right.detailAddress ? ` ${right.detailAddress}` : ''),
         (right.name || '') + (nameSuffix ? ` ${nameSuffix}` : ''),
         right.postalCode || ''
-      ] : ['', '', '', ''];
+      ] : ['', '', ''];
       
       trs += `
         <hp:tr>
