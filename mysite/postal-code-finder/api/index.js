@@ -99,22 +99,15 @@ try {
   };
 }
 
-// 라우트 가져오기 (오류 처리 추가)
-let addressRoutes, fileRoutes, errorHandler;
-try {
-  addressRoutes = require('../backend/src/routes/address');
-  fileRoutes = require('../backend/src/routes/file');
-  errorHandler = require('../backend/src/middleware/errorHandler');
-} catch (error) {
-  console.error('Routes loading error:', error);
-  // 기본 라우트 설정
-  addressRoutes = (req, res) => res.status(500).json({ error: 'Address routes not loaded' });
-  fileRoutes = (req, res) => res.status(500).json({ error: 'File routes not loaded' });
-  errorHandler = (err, req, res, next) => {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
-  };
-}
+// 서버리스 환경에서 백엔드 라우트(require)로 인한 부작용 방지
+// (일부 라우트가 파일시스템에 디렉터리 생성 시도 → Vercel의 읽기전용 경로에서 오류)
+// 이 파일 내에 구현된 인라인 라우트를 사용하고, 외부 라우트는 로드하지 않음
+const addressRoutes = (req, res) => res.status(500).json({ error: 'Address routes not loaded' });
+const fileRoutes = (req, res) => res.status(500).json({ error: 'File routes not loaded' });
+const errorHandler = (err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
+};
 
 const app = express();
 
