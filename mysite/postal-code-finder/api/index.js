@@ -6,6 +6,20 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
+// 주소 문자열에서 '동', '호'를 추출하여 "102동 802호" 형태로 반환
+function extractDongHo(input) {
+  try {
+    if (!input) return '';
+    const s = String(input);
+    const mDong = s.match(/(\d+(?:-\d+)?)\s*동\b/i);
+    const mHo = s.match(/(\d+(?:-\d+)?)\s*호\b/i);
+    const parts = [];
+    if (mDong) parts.push(`${mDong[1]}동`);
+    if (mHo) parts.push(`${mHo[1]}호`);
+    return parts.join(' ');
+  } catch (_) { return ''; }
+}
+
 // 설정 파일 가져오기 (Vercel 환경 고려)
 let config;
 try {
@@ -188,9 +202,14 @@ app.post('/api/address/search', async (req, res) => {
       });
     }
 
+    // 도로명주소에 원본의 동/호가 있으면 뒤에 덧붙임
+    const baseFull = juso.roadAddr || juso.jibunAddr || '';
+    const suffix = extractDongHo(address);
+    const fullWithDongHo = suffix && !baseFull.includes(suffix) ? `${baseFull} ${suffix}` : baseFull;
+
     const result = {
       postalCode: juso.zipNo || '',
-      fullAddress: juso.roadAddr || juso.jibunAddr || '',
+      fullAddress: fullWithDongHo,
       sido: juso.siNm || '',
       sigungu: juso.sggNm || ''
     };
@@ -409,11 +428,14 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
           
           if (common?.errorCode === '0' && results.juso?.[0]) {
             const juso = results.juso[0];
+            const baseFull = juso.roadAddr || juso.jibunAddr || '';
+            const suffix = extractDongHo(address);
+            const fullWithDongHo = suffix && !baseFull.includes(suffix) ? `${baseFull} ${suffix}` : baseFull;
             jobData.results.push({
               row: i + 2,
               originalAddress: address,
               postalCode: juso.zipNo || '',
-              fullAddress: juso.roadAddr || juso.jibunAddr || '',
+              fullAddress: fullWithDongHo,
               sido: juso.siNm || '',
               sigungu: juso.sggNm || ''
             });
@@ -606,11 +628,14 @@ app.get('/api/file/status/:jobId', async (req, res) => {
             
             if (common?.errorCode === '0' && results.juso?.[0]) {
               const juso = results.juso[0];
+              const baseFull = juso.roadAddr || juso.jibunAddr || '';
+              const suffix = extractDongHo(address);
+              const fullWithDongHo = suffix && !baseFull.includes(suffix) ? `${baseFull} ${suffix}` : baseFull;
               job.results.push({
                 row: i + 2,
                 originalAddress: address,
                 postalCode: juso.zipNo || '',
-                fullAddress: juso.roadAddr || juso.jibunAddr || '',
+                fullAddress: fullWithDongHo,
                 sido: juso.siNm || '',
                 sigungu: juso.sggNm || ''
               });
