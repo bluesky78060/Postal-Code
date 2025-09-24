@@ -52,7 +52,7 @@ function buildSectionXml(rows, options = {}) {
     
     return `
       <hp:tc name="" header="0" hasMargin="1" protect="0" editable="0" dirty="0" borderFillIDRef="4">
-        <hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">
+        <hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="MIDDLE" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">
           ${paragraphs}
         </hp:subList>
         <hp:cellAddr colAddr="${cellId % 2}" rowAddr="${Math.floor(cellId / 2)}"/>
@@ -110,7 +110,9 @@ function buildSectionXml(rows, options = {}) {
       return `
   <hp:p paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
     <hp:run charPrIDRef="0">
-      ${pageTable(pageItems, pageIndex)}
+      <hp:ctrl>
+        ${pageTable(pageItems, pageIndex)}
+      </hp:ctrl>
     </hp:run>
   </hp:p>`;
     })
@@ -139,6 +141,8 @@ async function buildHwpxFromTemplate(items, options = {}) {
   const tplRoot = path.join(__dirname, '..', 'docs', 'sample_hwpx');
   // Load template files
   let headerXml = fs.readFileSync(path.join(tplRoot, 'Contents', 'header.xml'), 'utf8');
+  let contentHpf = fs.readFileSync(path.join(tplRoot, 'Contents', 'content.hpf'), 'utf8');
+  let manifestXml = fs.readFileSync(path.join(tplRoot, 'META-INF', 'manifest.xml'), 'utf8');
   
   // 동적 ID 할당: 기존 최대 ID 스캔
   const maxCharId = Math.max(...[...headerXml.matchAll(/<hh:charPr id="(\d+)"/g)].map(m => +m[1] || 0));
@@ -175,15 +179,42 @@ async function buildHwpxFromTemplate(items, options = {}) {
   headerXml = headerXml.replace('</hh:charProperties>', newCharPr11pt + '</hh:charProperties>');
   headerXml = headerXml.replace('</hh:paraProperties>', newParaPrLeft + newParaPrRight + newParaPrCenter + '</hh:paraProperties>');
 
+  // Ensure Contents/content.hpf references section0.xml (opf manifest + spine)
+  if (!/href=\"Contents\/section0\.xml\"/i.test(contentHpf)) {
+    // add item in opf:manifest
+    contentHpf = contentHpf.replace(/<opf:manifest>([\s\S]*?)<\/opf:manifest>/, (m, inner) => {
+      if (/href=\"Contents\/section0\.xml\"/i.test(inner)) return m;
+      return `<opf:manifest>${inner}<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/></opf:manifest>`;
+    });
+    // add itemref in spine
+    contentHpf = contentHpf.replace(/<opf:spine>([\s\S]*?)<\/opf:spine>/, (m, inner) => {
+      if (/idref=\"section0\"/i.test(inner)) return m;
+      return `<opf:spine>${inner}<opf:itemref idref="section0" linear="yes"/></opf:spine>`;
+    });
+  }
+
+  // Ensure META-INF/manifest.xml lists section0.xml
+  if (!/section0\.xml/i.test(manifestXml)) {
+    if (/<odf:manifest[^>]*\/>/.test(manifestXml)) {
+      // expand self-closing root
+      manifestXml = manifestXml.replace(/<odf:manifest([^>]*)\/>/, (m, attrs) => `<odf:manifest${attrs}>
+  <odf:file-entry odf:full-path="Contents/section0.xml" odf:media-type="application/xml"/>
+</odf:manifest>`);
+    } else {
+      manifestXml = manifestXml.replace(/<\/odf:manifest>/, `  <odf:file-entry odf:full-path="Contents/section0.xml" odf:media-type="application/xml"/>
+</odf:manifest>`);
+    }
+  }
+
   const files = {
     'mimetype': fs.readFileSync(path.join(tplRoot, 'mimetype')),
     'version.xml': fs.readFileSync(path.join(tplRoot, 'version.xml')),
     'settings.xml': fs.readFileSync(path.join(tplRoot, 'settings.xml')),
     'Contents/header.xml': Buffer.from(headerXml, 'utf8'),
-    'Contents/content.hpf': fs.readFileSync(path.join(tplRoot, 'Contents', 'content.hpf')),
+    'Contents/content.hpf': Buffer.from(contentHpf, 'utf8'),
     'META-INF/container.rdf': fs.readFileSync(path.join(tplRoot, 'META-INF', 'container.rdf')),
     'META-INF/container.xml': fs.readFileSync(path.join(tplRoot, 'META-INF', 'container.xml')),
-    'META-INF/manifest.xml': fs.readFileSync(path.join(tplRoot, 'META-INF', 'manifest.xml')),
+    'META-INF/manifest.xml': Buffer.from(manifestXml, 'utf8'),
   };
 
   // Section content - 동적 ID들을 전달
