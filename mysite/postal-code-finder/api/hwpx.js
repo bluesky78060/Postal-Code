@@ -36,17 +36,28 @@ function buildSectionXml(rows, options = {}) {
   }
 
   function cellXml(texts, cellId, newCharId, paraPrIds) {
+    // 라벨 셀 내 문단 배치: linesegarray로 줄 위치를 명시해 조판 안정성 향상
+    const CELL_H = 8504; // 한 셀 높이(HWPUNIT)
+    const LINE_H = 1200; // 한 줄 높이
+    const LINE_SP = 600; // 줄간 간격
+    const totalBlock = texts.length > 0 ? (texts.length * LINE_H + (texts.length - 1) * LINE_SP) : 0;
+    const startOffset = Math.max(0, Math.round((CELL_H - totalBlock) / 2));
+
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
       const pid = `${cellId}_${idx}`;
       // 텍스트별 정렬: 주소(합쳐진)=LEFT / 이름,우편번호=RIGHT
       const inlineAlign = idx === 0 ? 'LEFT' : 'RIGHT';
       const paraPrId = inlineAlign === 'LEFT' ? paraPrIds[0] : paraPrIds[1];
+      const vertpos = startOffset + idx * (LINE_H + LINE_SP);
       return `
         <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
           <hp:run charPrIDRef="${newCharId}">
             <hp:t>${escapeXml(content)}</hp:t>
           </hp:run>
+          <hp:linesegarray>
+            <hp:lineseg textpos="0" vertpos="${vertpos}" vertsize="${LINE_H}" textheight="${LINE_H}" baseline="600" spacing="${LINE_SP}" horzpos="0" horzsize="28344" flags="393216"/>
+          </hp:linesegarray>
         </hp:p>`;
     }).join('');
     
