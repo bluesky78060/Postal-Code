@@ -28,38 +28,23 @@ function detectColumns(headers) {
 }
 
 function buildSectionXml(rows, options = {}) {
-  const { nameSuffix = '', perPage = 18 } = options;
+  const { nameSuffix = '', perPage = 18, newCharId, paraPrIds } = options;
   const pages = [];
   for (let i = 0; i < rows.length; i += perPage) {
     pages.push(rows.slice(i, i + perPage));
   }
 
-  function cellXml(texts, cellId) {
-    // 사용자 요청에 따라 주소는 왼쪽, 이름과 우편번호는 오른쪽 정렬
-    const paraPrIds = [20, 21, 21]; // 주소(20=왼쪽), 이름(21=오른쪽), 우편번호(21=오른쪽)
-    
-    // 셀 높이 8504에서 3줄 텍스트를 세로 가운데 정렬하기 위한 수동 계산
-    const cellHeight = 8504;
-    const lineHeight = 1200;
-    const totalTextHeight = 3 * lineHeight;
-    const startOffset = Math.round((cellHeight - totalTextHeight) / 2);
-    
+  function cellXml(texts, cellId, newCharId, paraPrIds) {
     const paragraphs = texts.map((text, idx) => {
       const content = text || '';
       const pid = `${cellId}_${idx}`;
       const paraPrId = paraPrIds[idx];
       
-      // 각 줄의 세로 위치를 수동으로 계산하여 정확한 가운데 정렬
-      const vertPos = startOffset + (idx * lineHeight);
-      
       return `
         <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
-          <hp:run charPrIDRef="7">
+          <hp:run charPrIDRef="${newCharId}">
             <hp:t>${escapeXml(content)}</hp:t>
           </hp:run>
-          <hp:linesegarray>
-            <hp:lineseg textpos="0" vertpos="${vertPos}" vertsize="1200" textheight="1200" baseline="1020" spacing="720" horzpos="0" horzsize="28344" flags="393216"/>
-          </hp:linesegarray>
         </hp:p>`;
     }).join('');
     
@@ -99,8 +84,8 @@ function buildSectionXml(rows, options = {}) {
       
       trs += `
         <hp:tr>
-          ${cellXml(leftTexts, cellIndex++)}
-          ${cellXml(rightTexts, cellIndex++)}
+          ${cellXml(leftTexts, cellIndex++, newCharId, paraPrIds)}
+          ${cellXml(rightTexts, cellIndex++, newCharId, paraPrIds)}
         </hp:tr>`;
     }
     
@@ -126,21 +111,39 @@ async function buildHwpxFromTemplate(items, options = {}) {
   // Load template files
   let headerXml = fs.readFileSync(path.join(tplRoot, 'Contents', 'header.xml'), 'utf8');
   
-  // Add new paragraph properties for custom alignment and character properties for 12pt font
-  const newCharPr12pt = `<hh:charPr id="7" height="1200" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2"><hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:underline type="NONE" shape="SOLID" color="#000000"/><hh:strikeout shape="NONE" color="#000000"/><hh:outline type="NONE"/><hh:shadow type="NONE" color="#B2B2B2" offsetX="10" offsetY="10"/></hh:charPr>`;
+  // 동적 ID 할당: 기존 최대 ID 스캔
+  const maxCharId = Math.max(...[...headerXml.matchAll(/<hh:charPr id="(\d+)"/g)].map(m => +m[1] || 0));
+  const maxParaId = Math.max(...[...headerXml.matchAll(/<hh:paraPr id="(\d+)"/g)].map(m => +m[1] || 0));
   
-  const newParaPrLeft = `<hh:paraPr id="20" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="LEFT" vertical="CENTER"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="2" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/></hh:paraPr>`;
+  const newCharId = maxCharId + 1;
+  const newParaIdLeft = maxParaId + 1;
+  const newParaIdRight = maxParaId + 2;
+  const newParaIdCenter = maxParaId + 3;
   
-  const newParaPrRight = `<hh:paraPr id="21" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="RIGHT" vertical="CENTER"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="2" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/></hh:paraPr>`;
+  console.log(`Dynamic ID allocation: charId=${newCharId}, paraIds=[${newParaIdLeft}, ${newParaIdRight}, ${newParaIdCenter}]`);
   
-  // 핵심: 가운데 정렬 문단 속성 추가
-  const newParaPrCenter = `<hh:paraPr id="22" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="CENTER" vertical="CENTER"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="2" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/></hh:paraPr>`;
+  // 12pt 폰트 문자 속성 (동적 ID 사용)
+  const newCharPr12pt = `<hh:charPr id="${newCharId}" height="1200" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2"><hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:underline type="NONE" shape="SOLID" color="#000000"/><hh:strikeout shape="NONE" color="#000000"/><hh:outline type="NONE"/><hh:shadow type="NONE" color="#B2B2B2" offsetX="10" offsetY="10"/></hh:charPr>`;
+  
+  const newParaPrLeft = `<hh:paraPr id="${newParaIdLeft}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="LEFT" vertical="CENTER"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace=\"http://www.hancom.co.kr/hwpml/2016/HwpUnitChar\"><hh:margin><hc:intent value=\"400\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"0\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"0\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"100\" unit=\"HWPUNIT\"/></hp:case><hp:default><hh:margin><hc:intent value=\"400\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"0\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"0\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"100\" unit=\"HWPUNIT\"/></hp:default></hp:switch><hh:border borderFillIDRef=\"2\" offsetLeft=\"0\" offsetRight=\"0\" offsetTop=\"0\" offsetBottom=\"0\" connect=\"0\" ignoreMargin=\"0\"/></hh:paraPr>`;
+  
+  const newParaPrRight = `<hh:paraPr id="${newParaIdRight}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="RIGHT" vertical="CENTER"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace=\"http://www.hancom.co.kr/hwpml/2016/HwpUnitChar\"><hh:margin><hc:intent value=\"0\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"-400\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"0\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"100\" unit=\"HWPUNIT\"/></hp:case><hp:default><hh:margin><hc:intent value=\"0\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"-400\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"0\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"100\" unit=\"HWPUNIT\"/></hp:default></hp:switch><hh:border borderFillIDRef=\"2\" offsetLeft=\"0\" offsetRight=\"0\" offsetTop=\"0\" offsetBottom=\"0\" connect=\"0\" ignoreMargin=\"0\"/></hh:paraPr>`;
+  
+  const newParaPrCenter = `<hh:paraPr id="${newParaIdCenter}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="CENTER" vertical="CENTER"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="100" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="2" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/></hh:paraPr>`;
+  
+  // 안전한 itemCnt 업데이트 (정확한 요소 타겟팅)
+  headerXml = headerXml.replace(
+    /(<hh:charProperties[^>]*itemCnt=")(\d+)(")/,
+    (_, a, n, c) => `${a}${Number(n) + 1}${c}`
+  );
+  headerXml = headerXml.replace(
+    /(<hh:paraProperties[^>]*itemCnt=")(\d+)(")/,
+    (_, a, n, c) => `${a}${Number(n) + 3}${c}`
+  );
   
   // Insert new properties before closing tags
   headerXml = headerXml.replace('</hh:charProperties>', newCharPr12pt + '</hh:charProperties>');
   headerXml = headerXml.replace('</hh:paraProperties>', newParaPrLeft + newParaPrRight + newParaPrCenter + '</hh:paraProperties>');
-  headerXml = headerXml.replace('itemCnt="7"', 'itemCnt="8"'); // Update charProperties count (8개)
-  headerXml = headerXml.replace('itemCnt="20"', 'itemCnt="23"'); // Update paraProperties count (23개)
 
   const files = {
     'mimetype': fs.readFileSync(path.join(tplRoot, 'mimetype')),
@@ -153,8 +156,13 @@ async function buildHwpxFromTemplate(items, options = {}) {
     'META-INF/manifest.xml': fs.readFileSync(path.join(tplRoot, 'META-INF', 'manifest.xml')),
   };
 
-  // Section content
-  const sectionXml = buildSectionXml(items, options);
+  // Section content - 동적 ID들을 전달
+  const paraPrIds = [newParaIdLeft, newParaIdRight, newParaIdRight]; // 주소(왼쪽), 이름(오른쪽), 우편번호(오른쪽)
+  const sectionXml = buildSectionXml(items, { 
+    ...options, 
+    newCharId, 
+    paraPrIds 
+  });
 
   const zip = new JSZip();
   // Important: store mimetype without compression (common OPC pattern)
