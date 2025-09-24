@@ -48,11 +48,22 @@ function buildSectionXml(rows, options = {}) {
       const pid = `${cellId}_${idx}`;
       // 텍스트별 정렬: 주소(합쳐진)=LEFT / 이름,우편번호=RIGHT
       const inlineAlign = idx === 0 ? 'LEFT' : 'RIGHT';
-      const paraPrId = inlineAlign === 'LEFT' ? paraPrIds[0] : paraPrIds[1];
+      // 문단 속성 적용: paraPrIDRef가 있으면 참조, 없으면 인라인 정렬 속성 추가
+      let paraAttr = '';
+      let paraInline = '';
+      if (Array.isArray(paraPrIds) && paraPrIds.length >= 2) {
+        const paraPrId = inlineAlign === 'LEFT' ? paraPrIds[0] : paraPrIds[1];
+        paraAttr = ` paraPrIDRef="${paraPrId}"`;
+      } else {
+        // 템플릿 내 기본 스타일을 유지하면서 문단 정렬만 인라인 지정
+        paraInline = `<hp:paraPr><hh:align horizontal="${inlineAlign}"/></hp:paraPr>`;
+      }
       const vertpos = startOffset + idx * (LINE_H + LINE_SP);
+      const runCharAttr = newCharId ? ` charPrIDRef=\"${newCharId}\"` : '';
       return `
-        <hp:p id="${pid}" paraPrIDRef="${paraPrId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
-          <hp:run charPrIDRef="${newCharId}">
+        <hp:p id="${pid}"${paraAttr} styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
+          ${paraInline}
+          <hp:run${runCharAttr}>
             <hp:t>${escapeXml(content)}</hp:t>
           </hp:run>
           <hp:linesegarray>
