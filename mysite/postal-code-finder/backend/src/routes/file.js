@@ -54,6 +54,7 @@ router.post('/upload', upload.single('file'), fileController.uploadAndProcess);
 router.get('/download/:fileId', validateFileId, fileController.downloadFile);
 router.get('/status/:jobId', validateJobId, fileController.getProcessingStatus);
 router.get('/label-data/:jobId', validateJobId, fileController.getLabelData);
+router.get('/hwpx/:jobId', validateJobId, fileController.generateHwpx);
 router.get('/list', fileController.getFileList);
 router.delete('/:fileId', validateFileId, fileController.deleteFile);
 
