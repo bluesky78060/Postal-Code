@@ -931,55 +931,47 @@ app.get('/api/file/label-data/:jobId', (req, res) => {
   }
 });
 
-// HWPX 다운로드: 라벨 데이터를 HWPX로 패키징하여 반환
+// HWPX 다운로드: 새로운 HWPX 생성기 사용
 app.get('/api/file/hwpx/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
     const nameSuffix = req.query.nameSuffix || '';
+    
+    // 작업 존재 여부 확인
     if (!global.excelJobs || !global.excelJobs[jobId]) {
       return res.status(404).json({ success: false, error: '작업을 찾을 수 없습니다.' });
     }
+    
     const job = global.excelJobs[jobId];
     if (job.status !== 'completed') {
       return res.status(400).json({ success: false, error: '작업이 완료되지 않았습니다.' });
     }
 
-    const fs = require('fs');
-    const path = require('path');
-    const { buildHwpxFromTemplate, buildHwpxFromHwpxTemplate, detectColumns } = require('./hwpx');
+    // 새로운 HWPX 생성기 사용
+    const { HwpxGenerator } = require('./hwpx-generator');
+    const generator = new HwpxGenerator();
+    
+    // 컬럼 탐지를 위한 기존 로직 재사용
+    const { detectColumns } = require('./hwpx');
     const headers = Array.isArray(job.headers) ? job.headers : [];
     const rows = Array.isArray(job.rows) ? job.rows : [];
     const cols = detectColumns(headers);
-    console.log('HWPX: Column detection result:', cols);
-    console.log('HWPX: Headers:', headers);
+    
+    console.log('HWPX Generator: Processing', rows.length, 'items');
+    console.log('HWPX Generator: Column detection result:', cols);
 
-    // rows + results를 합쳐 최종 표시 데이터 구성
-    // 주소는 항상 도로명주소(결과 fullAddress: roadAddr 우선)를 우선 사용 + 상세주소 컬럼 전달
+    // 라벨 데이터 구성
     const items = rows.map((row, idx) => {
       const arr = Array.isArray(row) ? row : Object.values(row || {});
       const get = i => (i >= 0 && i < arr.length) ? String(arr[i] || '') : '';
       const r = job.results?.find(r => r.row === idx + 2);
       
-      // 1) 주소: 결과의 fullAddress(roadAddr 우선)를 최우선 사용, 없으면 원본 컬럼
+      // 주소: API 결과 우선, 없으면 원본 데이터
       let address = r?.fullAddress || get(cols.address) || '';
-      // 상세주소: 컬럼이 있으면 그대로 전달
       let detailAddress = get(cols.detailAddress);
-      
-      // 디버그 로깅 (첫 5개 행만)
-      if (idx < 5) {
-        console.log(`HWPX Row ${idx}:`, {
-          detailAddressCol: cols.detailAddress,
-          detailAddress,
-          rawRow: arr,
-          address,
-          name: get(cols.name)
-        });
-      }
-
-      // 2) 성명: 원본 컬럼 우선
       let name = get(cols.name);
-
-      // 3) 우편번호: 원본 컬럼 없으면 결과값 사용
+      
+      // 우편번호: 원본 컬럼 우선, 없으면 API 결과
       let postalCode = get(cols.postalCode);
       if (!postalCode) {
         postalCode = r?.postalCode || '';
@@ -988,33 +980,20 @@ app.get('/api/file/hwpx/:jobId', async (req, res) => {
       return { address, detailAddress, name, postalCode };
     });
 
-    // 템플릿 선택: 쿼리 ?template= 경로 또는 기본 템플릿 존재 시 사용
-    let templateParam = (req.query.template || '').trim();
-    let candidatePaths = [];
-    if (templateParam) {
-      // 절대경로 또는 프로젝트 상대 경로 허용
-      candidatePaths.push(templateParam);
-      candidatePaths.push(path.join(__dirname, '..', templateParam));
-    }
-    // 기본 경로 후보: docs/sample_hwpx/템플릿.hwpx
-    candidatePaths.push(path.join(__dirname, '..', 'docs', 'sample_hwpx', '템플릿.hwpx'));
-
-    let selectedTemplate = candidatePaths.find(p => {
-      try { return fs.existsSync(p); } catch { return false; }
-    });
-
-    let buf;
-    if (selectedTemplate) {
-      buf = await buildHwpxFromHwpxTemplate(selectedTemplate, items, { nameSuffix });
-    } else {
-      buf = await buildHwpxFromTemplate(items, { nameSuffix });
-    }
-    res.setHeader('Content-Type', 'application/zip');
+    // HWPX 생성
+    const buffer = await generator.generate(items, { nameSuffix });
+    
+    // 응답 헤더 설정
+    res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="labels_${jobId}.hwpx"`);
-    return res.send(buf);
+    res.send(buffer);
+    
   } catch (error) {
-    console.error('HWPX build error:', error);
-    res.status(500).json({ success: false, error: 'HWPX 생성 중 오류가 발생했습니다.' });
+    console.error('HWPX Generator Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: `HWPX 생성 실패: ${error.message}` 
+    });
   }
 });
 
