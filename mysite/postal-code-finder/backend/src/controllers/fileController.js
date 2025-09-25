@@ -510,12 +510,23 @@ class FileController {
       // 유효한 행만 필터링하고 매핑
       const items = rows
         .filter(row => row && row.some(cell => cell && String(cell).trim()))
-        .map(row => ({
-          address: cols.address >= 0 ? (row[cols.address] || '') : '',
-          detailAddress: cols.detailAddress >= 0 ? (row[cols.detailAddress] || '') : '',
-          name: cols.name >= 0 ? (row[cols.name] || '') : '',
-          postalCode: cols.postalCode >= 0 ? (row[cols.postalCode] || '') : ''
-        }));
+        .map((row, index) => {
+          let address = cols.address >= 0 ? (row[cols.address] || '') : '';
+          let postalCode = cols.postalCode >= 0 ? (row[cols.postalCode] || '') : '';
+          
+          // 주소에서 우편번호 패턴 제거 (5자리 숫자)
+          const postalPattern = /\s*\d{5}\s*$/;
+          if (postalPattern.test(address)) {
+            address = address.replace(postalPattern, '').trim();
+          }
+          
+          return {
+            address,
+            detailAddress: cols.detailAddress >= 0 && cols.detailAddress !== cols.postalCode ? (row[cols.detailAddress] || '') : '',
+            name: cols.name >= 0 ? (row[cols.name] || '') : `주민${index + 1}`, // 이름이 없으면 기본값 생성
+            postalCode
+          };
+        });
 
       if (items.length === 0) {
         return res.status(400).json({

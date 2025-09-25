@@ -13,18 +13,26 @@ function escapeXml(text = '') {
 
 function detectColumns(headers) {
   const lower = headers.map(h => String(h || '').toLowerCase());
-  function findOne(keys) {
+  function findOne(keys, excludeIndices = []) {
     for (const k of keys) {
-      const idx = lower.findIndex(h => h.includes(k));
+      const idx = lower.findIndex((h, i) => h.includes(k) && !excludeIndices.includes(i));
       if (idx >= 0) return idx;
     }
     return -1;
   }
+  
+  // 우편번호를 먼저 찾아서 중복을 피함
+  const postalCode = findOne(['우편번호', 'zip', 'postal']);
+  
+  // 주소는 단순 '주소'를 우선하고, '도로명주소'는 후순위
+  const address = findOne(['주소'], [postalCode]) >= 0 ? 
+    findOne(['주소'], [postalCode]) : findOne(['도로명주소', 'address', 'addr'], [postalCode]);
+  
   return {
-    address: findOne(['주소', 'address', 'addr', 'road', '도로']),
-    detailAddress: findOne(['상세주소', '상세', 'detail', '세부주소', '추가주소', '아파트', '동호수', '호수', '동', '층', '호']),
-    name: findOne(['이름', '성명', 'name']),
-    postalCode: findOne(['우편번호', 'zip', 'postal'])
+    address,
+    detailAddress: findOne(['상세주소', '상세', 'detail', '세부주소', '추가주소', '아파트', '동호수', '호수', '동', '층', '호'], [address, postalCode]),
+    name: findOne(['이름', '성명', 'name'], [address, postalCode]),
+    postalCode
   };
 }
 
