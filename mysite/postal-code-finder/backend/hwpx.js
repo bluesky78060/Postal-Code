@@ -168,6 +168,15 @@ function buildSectionXml(rows, options = {}) {
 }
 
 async function buildHwpxFromTemplate(items, options = {}) {
+  const templatePath = path.join(__dirname, '..', 'docs', 'sample_hwpx', '템플릿.hwpx');
+  
+  // 원본 템플릿 파일이 있으면 직접 사용 (더 정확한 구조 유지)
+  if (fs.existsSync(templatePath)) {
+    console.log('Using original HWPX template file for better compatibility');
+    return await buildHwpxFromHwpxTemplate(templatePath, items, options);
+  }
+  
+  // 백업: 기존 방식 (템플릿 파일이 없을 때)
   const tplRoot = path.join(__dirname, '..', 'docs', 'sample_hwpx');
   // Load template files
   let headerXml = fs.readFileSync(path.join(tplRoot, 'Contents', 'header.xml'), 'utf8');
@@ -284,14 +293,113 @@ async function buildHwpxFromHwpxTemplate(templateHwpxPath, items, options = {}) 
   const raw = fs.readFileSync(absPath);
   const zip = await JSZip.loadAsync(raw);
 
-  // 새 섹션 XML 생성 (템플릿 스타일/마진은 템플릿에 포함되었다고 가정)
-  const sectionXml = buildSectionXml(items, options);
+  // 기존 header.xml 읽어서 스타일 분석
+  const headerFile = zip.file('Contents/header.xml');
+  if (!headerFile) {
+    throw new Error('템플릿에서 header.xml을 찾을 수 없습니다');
+  }
+  
+  let headerXml = await headerFile.async('text');
+  
+  // 동적 ID 할당: 기존 최대 ID 스캔
+  const maxCharId = Math.max(...[...headerXml.matchAll(/<hh:charPr id="(\d+)"/g)].map(m => +m[1] || 0));
+  const maxParaId = Math.max(...[...headerXml.matchAll(/<hh:paraPr id="(\d+)"/g)].map(m => +m[1] || 0));
+  
+  const newCharId = maxCharId + 1;
+  const newParaIdLeft = maxParaId + 1;
+  const newParaIdRight = maxParaId + 2;
+  
+  console.log(`Template-based ID allocation: charId=${newCharId}, paraIds=[${newParaIdLeft}, ${newParaIdRight}]`);
+  
+  // 11pt 폰트 문자 속성과 문단 속성 추가
+  const newCharPr11pt = `<hh:charPr id="${newCharId}" height="1100" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2"><hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:underline type="NONE" shape="SOLID" color="#000000"/><hh:strikeout shape="NONE" color="#000000"/><hh:outline type="NONE"/><hh:shadow type="NONE" color="#B2B2B2" offsetX="10" offsetY="10"/></hh:charPr>`;
+  
+  const newParaPrLeft = `<hh:paraPr id="${newParaIdLeft}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="LEFT" vertical="TOP"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace=\"http://www.hancom.co.kr/hwpml/2016/HwpUnitChar\"><hh:margin><hc:intent value=\"0\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"0\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"120\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"130\" unit=\"HWPUNIT\"/></hp:case><hp:default><hh:margin><hc:intent value=\"0\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"0\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"120\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"130\" unit=\"HWPUNIT\"/></hp:default></hp:switch><hh:border borderFillIDRef=\"2\" offsetLeft=\"0\" offsetRight=\"0\" offsetTop=\"0\" offsetBottom=\"0\" connect=\"0\" ignoreMargin=\"0\"/></hh:paraPr>`;
+  
+  const newParaPrRight = `<hh:paraPr id="${newParaIdRight}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0"><hh:align horizontal="RIGHT" vertical="TOP"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="BREAK_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace=\"http://www.hancom.co.kr/hwpml/2016/HwpUnitChar\"><hh:margin><hc:intent value=\"0\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"0\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"120\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"130\" unit=\"HWPUNIT\"/></hp:case><hp:default><hh:margin><hc:intent value=\"0\" unit=\"HWPUNIT\"/><hc:left value=\"0\" unit=\"HWPUNIT\"/><hc:right value=\"0\" unit=\"HWPUNIT\"/><hc:prev value=\"0\" unit=\"HWPUNIT\"/><hc:next value=\"120\" unit=\"HWPUNIT\"/></hh:margin><hh:lineSpacing type=\"PERCENT\" value=\"130\" unit=\"HWPUNIT\"/></hp:default></hp:switch><hh:border borderFillIDRef=\"2\" offsetLeft=\"0\" offsetRight=\"0\" offsetTop=\"0\" offsetBottom=\"0\" connect=\"0\" ignoreMargin=\"0\"/></hh:paraPr>`;
+
+  // itemCnt 업데이트 및 새 속성 추가
+  headerXml = headerXml.replace(
+    /(<hh:charProperties[^>]*itemCnt=")(\d+)(")/,
+    (_, a, n, c) => `${a}${Number(n) + 1}${c}`
+  );
+  headerXml = headerXml.replace(
+    /(<hh:paraProperties[^>]*itemCnt=")(\d+)(")/,
+    (_, a, n, c) => `${a}${Number(n) + 2}${c}`
+  );
+  
+  // 새 속성 삽입
+  headerXml = headerXml.replace('</hh:charProperties>', newCharPr11pt + '</hh:charProperties>');
+  headerXml = headerXml.replace('</hh:paraProperties>', newParaPrLeft + newParaPrRight + '</hh:paraProperties>');
+
+  // 업데이트된 헤더를 ZIP에 다시 저장
+  zip.file('Contents/header.xml', headerXml);
+
+  // manifest.xml 업데이트 (section0.xml 추가)
+  const manifestFile = zip.file('META-INF/manifest.xml');
+  if (manifestFile) {
+    let manifestXml = await manifestFile.async('text');
+    
+    // section0.xml이 없으면 추가
+    if (!manifestXml.includes('section0.xml')) {
+      if (/<odf:manifest[^>]*\/>/.test(manifestXml)) {
+        // 자동 닫기 태그를 확장
+        manifestXml = manifestXml.replace(/<odf:manifest([^>]*)\/>/, (m, attrs) => 
+          `<odf:manifest${attrs}>
+  <odf:file-entry odf:full-path="Contents/section0.xml" odf:media-type="application/xml"/>
+</odf:manifest>`);
+      } else {
+        // 닫는 태그 앞에 추가
+        manifestXml = manifestXml.replace(/<\/odf:manifest>/, 
+          `  <odf:file-entry odf:full-path="Contents/section0.xml" odf:media-type="application/xml"/>
+</odf:manifest>`);
+      }
+      console.log('Updated manifest.xml to include section0.xml');
+      zip.file('META-INF/manifest.xml', manifestXml);
+    }
+  }
+
+  // content.hpf 업데이트 (section0.xml 참조 추가)
+  const contentFile = zip.file('Contents/content.hpf');
+  if (contentFile) {
+    let contentHpf = await contentFile.async('text');
+    
+    // section0.xml 참조가 없으면 추가
+    if (!contentHpf.includes('section0.xml')) {
+      // opf:manifest에 항목 추가
+      contentHpf = contentHpf.replace(/<opf:manifest>([\s\S]*?)<\/opf:manifest>/, (m, inner) => {
+        if (inner.includes('section0.xml')) return m;
+        return `<opf:manifest>${inner}<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/></opf:manifest>`;
+      });
+      
+      // opf:spine에 참조 추가
+      contentHpf = contentHpf.replace(/<opf:spine>([\s\S]*?)<\/opf:spine>/, (m, inner) => {
+        if (inner.includes('section0')) return m;
+        return `<opf:spine>${inner}<opf:itemref idref="section0" linear="yes"/></opf:spine>`;
+      });
+      
+      console.log('Updated content.hpf to include section0.xml references');
+      zip.file('Contents/content.hpf', contentHpf);
+    }
+  }
+
+  // 새 섹션 XML 생성 (동적 ID와 함께)
+  const paraPrIds = [newParaIdLeft, newParaIdRight, newParaIdRight]; // 주소(왼쪽), 이름(오른쪽), 우편번호(오른쪽)
+  const sectionXml = buildSectionXml(items, { 
+    ...options, 
+    newCharId, 
+    paraPrIds 
+  });
 
   // 기존 섹션 교체
   zip.file('Contents/section0.xml', sectionXml);
 
-  // 결과 버퍼 생성
-  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  // 결과 버퍼 생성 (mimetype은 압축하지 않음)
+  const buffer = await zip.generateAsync({ 
+    type: 'nodebuffer', 
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 }
+  });
   return buffer;
 }
 
