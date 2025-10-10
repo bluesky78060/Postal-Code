@@ -96,6 +96,7 @@
   }
 
   function handleFileSelect(e) { const f = e.target.files[0]; if (f) uploadFile(f); }
+  function handleLabelFileSelect(e) { const f = e.target.files[0]; if (f) uploadLabelFile(f); }
 
   async function uploadFile(file) {
     const progressDiv = document.getElementById('uploadProgress');
@@ -117,6 +118,59 @@
     } catch (e) {
       progressDiv.classList.add('hidden');
       showResult(resultDiv, `❌ 업로드 중 오류가 발생했습니다.<div style="margin-top:12px"><button class="btn" data-reset-upload>↩️ 초기화</button></div>`, 'error');
+    }
+  }
+
+  // 라벨 업로드 전용 흐름 (라벨 탭의 진행률/미리보기 UI를 사용)
+  async function uploadLabelFile(file) {
+    // 확장자/크기 검사
+    if (!file.name.match(/\.(xls|xlsx)$/i)) { alert('엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('파일 크기는 10MB 이하여야 합니다.'); return; }
+
+    // 라벨 진행바 표시
+    const prog = document.getElementById('labelUploadProgress');
+    prog.classList.remove('hidden');
+    updateLabelProgress(0, '파일 업로드 중...');
+
+    try {
+      const formData = new FormData(); formData.append('file', file);
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      const data = await response.json();
+      if (data.success) {
+        currentLabelJobId = data.data.jobId;
+        updateLabelProgress(10, '파일 처리 중...');
+        await waitForLabelProcessingLabel(currentLabelJobId);
+      } else {
+        prog.classList.add('hidden');
+        alert('파일 업로드 실패: ' + (data.error || ''));   
+      }
+    } catch (e) {
+      prog.classList.add('hidden');
+      alert('라벨 파일 처리 중 오류가 발생했습니다: ' + e.message);
+    }
+  }
+
+  async function waitForLabelProcessingLabel(jobId){
+    try {
+      const res = await fetch(`${API_BASE}/file/status/${jobId}`);
+      const data = await res.json();
+      if (data.success){
+        const st = data.data;
+        updateLabelProgress(st.progress, `처리 중... (${st.processed}/${st.total})`);
+        if (st.status === 'completed'){
+          updateLabelProgress(100, '처리 완료!');
+          document.getElementById('labelUploadProgress').classList.add('hidden');
+          await loadLabelData(jobId);
+        } else if (st.status === 'processing'){
+          setTimeout(()=>waitForLabelProcessingLabel(jobId), 1200);
+        } else {
+          document.getElementById('labelUploadProgress').classList.add('hidden');
+          alert('파일 처리 실패: ' + (st.error || ''));
+        }
+      }
+    } catch (e){
+      document.getElementById('labelUploadProgress').classList.add('hidden');
+      alert('상태 확인 중 오류: ' + e.message);
     }
   }
 
@@ -277,10 +331,10 @@
     document.getElementById('searchResult').addEventListener('click', (e)=>{ const reset=e.target.closest('button[data-reset-search]'); if(reset){ resetSearchUI(); } });
 
     const labelDropArea=document.getElementById('labelFileDropArea'); labelDropArea.addEventListener('click', ()=>document.getElementById('labelFile').click());
-    document.getElementById('labelFile').addEventListener('change', handleFileSelect);
+    document.getElementById('labelFile').addEventListener('change', handleLabelFileSelect);
     labelDropArea.addEventListener('dragover', (e)=>{ e.preventDefault(); labelDropArea.classList.add('dragover'); });
     labelDropArea.addEventListener('dragleave', ()=>labelDropArea.classList.remove('dragover'));
-    labelDropArea.addEventListener('drop', (e)=>{ e.preventDefault(); labelDropArea.classList.remove('dragover'); const files=e.dataTransfer.files; if(files.length>0) uploadFile(files[0]); });
+    labelDropArea.addEventListener('drop', (e)=>{ e.preventDefault(); labelDropArea.classList.remove('dragover'); const files=e.dataTransfer.files; if(files.length>0) uploadLabelFile(files[0]); });
 
     document.getElementById('btnGenerateLabels').addEventListener('click', generateLabels);
     const btnPrint=document.getElementById('btnPrintLabels'); if(btnPrint) btnPrint.addEventListener('click', printLabels);
@@ -292,4 +346,3 @@
     document.getElementById('btnLoadSampleData').addEventListener('click', ()=>{ labelData=generateSampleData(); showLabelDataPreview(); });
   });
 })();
-
