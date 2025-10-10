@@ -181,11 +181,17 @@
     </div>
 
     <!-- 배포 정보 (선택) -->
-    <div style="max-width:800px;margin:10px auto 30px auto;text-align:center;color:#666;font-size:12px">
+    <div id="deployInfoWrap" style="max-width:800px;margin:10px auto 30px auto;text-align:center;color:#666;font-size:12px">
       <span id="deployInfo">배포 정보 확인 중...</span>
     </div>
     <script>
       (function(){
+        // 배포 정보는 로컬에서만 표시
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          var wrap = document.getElementById('deployInfoWrap');
+          if (wrap) wrap.style.display = 'none';
+          return;
+        }
         fetch('/api/health').then(r=>r.json()).then(j=>{
           try{
             const s = j.vercel?.commitSha ? j.vercel.commitSha.substring(0,7) : 'unknown';
@@ -202,7 +208,10 @@
     <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>
 </html>
-        /* 라벨 필드 설정 간격 */
-        .field-mapping { display: flex; align-items: center; gap: 12px; margin: 10px 0 14px; flex-wrap: wrap; }
-        .field-mapping label { min-width: 100px; font-weight: 600; }
+        /* 라벨 필드 설정 간격 (넓게) */
+        .field-mapping {
+          display: flex; align-items: center; justify-content: flex-start;
+          flex-wrap: wrap; gap: 16px 24px; margin: 10px 0 14px 0;
+        }
+        .field-mapping label { min-width: 120px; font-weight: 600; }
         .field-mapping select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px; background: #fff; }
