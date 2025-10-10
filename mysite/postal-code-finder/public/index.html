@@ -136,10 +136,10 @@
                     </div>
                     <div style="margin: 20px 0;">
                         <label>라벨 필드 설정:</label>
-                        <div id="labelFieldMapping" style="margin-top: 10px;"></div>
-                        <div class="field-mapping" style="margin-top: 10px;">
+                        <div id="labelFieldMapping"></div>
+                        <div class="field-mapping">
                             <label>성명 뒤 호칭:</label>
-                            <select id="nameSuffix" style="margin-left: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                            <select id="nameSuffix" style="padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px;">
                                 <option value="">없음</option>
                                 <option value="님" selected>님</option>
                                 <option value="귀하">귀하</option>
@@ -209,9 +209,9 @@
 </body>
 </html>
         /* 라벨 필드 설정 간격 (넓게) */
-        .field-mapping {
+        #labelDataPreview .field-mapping, #labelFieldMapping .field-mapping, .field-mapping {
           display: flex; align-items: center; justify-content: flex-start;
-          flex-wrap: wrap; gap: 16px 24px; margin: 10px 0 14px 0;
+          flex-wrap: wrap; gap: 16px 24px; margin: 10px 0 14px 0 !important;
         }
-        .field-mapping label { min-width: 120px; font-weight: 600; }
-        .field-mapping select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px; background: #fff; }
+        #labelDataPreview .field-mapping label, .field-mapping label { min-width: 120px; font-weight: 600; }
+        #labelDataPreview .field-mapping select, .field-mapping select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px; background: #fff; }
