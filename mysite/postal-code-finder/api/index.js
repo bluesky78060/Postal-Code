@@ -6,84 +6,6 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
-// 주소 문자열에서 '동', '호'를 추출하여 "102동 802호" 형태로 반환
-function extractDongHo(input) {
-  try {
-    if (!input) return '';
-    const s = String(input);
-    // 주의: JS \b는 한글 경계에 안전하지 않으므로 공백/문자열끝을 경계로 사용
-    // 1) 숫자 동 (예: 102동)
-    const mDongNum = s.match(/(\d+(?:-\d+)?)\s*동(?=\s|$)/i);
-    // 2) 문자 동 (예: 가동, 나동, A동, B동) — 한 글자만 허용해 '휴천동' 같은 행정동 오탐 방지
-    const mDongAlpha = s.match(/(?:^|\s)([A-Za-z가-힣])\s*동(?=\s|$)/);
-    const mHo = s.match(/(\d+(?:-\d+)?)\s*호(?=\s|$)/i);
-    const parts = [];
-    if (mDongNum) parts.push(`${mDongNum[1]}동`);
-    else if (mDongAlpha) parts.push(`${mDongAlpha[1]}동`);
-    if (mHo) parts.push(`${mHo[1]}호`);
-    return parts.join(' ');
-  } catch (_) { return ''; }
-}
-
-// 라벨 HTML (2열 x 9행) SSR 생성: 주소, 상세주소, 이름(+호칭), 우편번호
-function buildLabelHtml(items = [], { nameSuffix = '' } = {}) {
-  // 한 페이지당 18개 (2x9)
-  const perPage = 18;
-  const pages = [];
-  for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage));
-
-  function renderPage(pageItems) {
-    let cells = '';
-    for (let r = 0; r < 9; r++) {
-      for (let c = 0; c < 2; c++) {
-        const idx = r * 2 + c;
-        const it = pageItems[idx] || {};
-        const addr = it.address || '';
-        const detail = it.detailAddress || '';
-        const nm = (it.name || '') + (nameSuffix ? ` ${nameSuffix}` : '');
-        const zip = it.postalCode || '';
-        cells += `
-        <div class="label-item">
-          <div class="addr">${escapeHtml(addr)}</div>
-          ${detail ? `<div class="detail">${escapeHtml(detail)}</div>` : ''}
-          <div class="name">${escapeHtml(nm)}</div>
-          <div class="zip">${escapeHtml(zip)}</div>
-        </div>`;
-      }
-    }
-    return `<div class="label-page">${cells}</div>`;
-  }
-
-  const pagesHtml = pages.map(renderPage).join('\n');
-  return `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"/>
-<style>
-  @page { size: A4; margin: 0; }
-  html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; }
-  .sheet { width: 210mm; margin: 0 auto; }
-  .label-page { position: relative; width: 210mm; height: 297mm; page-break-after: always; box-sizing: border-box; padding: 8mm 0 12mm 5mm; }
-  .label-item { position: absolute; width: 100mm; height: 30mm; box-sizing: border-box; padding: 3mm; display: flex; flex-direction: column; justify-content: space-between; }
-  /* 그리드 배치: 2열 9행 */
-  ${Array.from({length: 18}).map((_,i)=>{
-    const row=Math.floor(i/2), col=i%2; const left = col===0?0:103; const top = row*30; 
-    return `.label-item:nth-of-type(${i+1}){ left:${left}mm; top:${top}mm; }`;}).join('\n')}
-  .addr{ font: 12pt/1.35 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; text-align:left; }
-  .detail{ font: 11pt/1.3 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; text-align:left; }
-  .name{ font: 14pt/1.2 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; text-align:right; font-weight:700; }
-  .zip{ font: 13pt/1.2 'Courier New', monospace; letter-spacing:2px; text-align:right; }
-</style></head>
-<body><div class="sheet">${pagesHtml}</div></body></html>`;
-}
-
-function escapeHtml(s='') {
-  return String(s)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#39;');
-}
-
 // 설정 파일 가져오기 (Vercel 환경 고려)
 let config;
 try {
@@ -99,15 +21,22 @@ try {
   };
 }
 
-// 서버리스 환경에서 백엔드 라우트(require)로 인한 부작용 방지
-// (일부 라우트가 파일시스템에 디렉터리 생성 시도 → Vercel의 읽기전용 경로에서 오류)
-// 이 파일 내에 구현된 인라인 라우트를 사용하고, 외부 라우트는 로드하지 않음
-const addressRoutes = (req, res) => res.status(500).json({ error: 'Address routes not loaded' });
-const fileRoutes = (req, res) => res.status(500).json({ error: 'File routes not loaded' });
-const errorHandler = (err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Internal server error' });
-};
+// 라우트 가져오기 (오류 처리 추가)
+let addressRoutes, fileRoutes, errorHandler;
+try {
+  addressRoutes = require('../backend/src/routes/address');
+  fileRoutes = require('../backend/src/routes/file');
+  errorHandler = require('../backend/src/middleware/errorHandler');
+} catch (error) {
+  console.error('Routes loading error:', error);
+  // 기본 라우트 설정
+  addressRoutes = (req, res) => res.status(500).json({ error: 'Address routes not loaded' });
+  fileRoutes = (req, res) => res.status(500).json({ error: 'File routes not loaded' });
+  errorHandler = (err, req, res, next) => {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  };
+}
 
 const app = express();
 
@@ -259,14 +188,9 @@ app.post('/api/address/search', async (req, res) => {
       });
     }
 
-    // 도로명주소에 원본의 동/호가 있으면 뒤에 덧붙임
-    const baseFull = juso.roadAddr || juso.jibunAddr || '';
-    const suffix = extractDongHo(address);
-    const fullWithDongHo = suffix && !baseFull.includes(suffix) ? `${baseFull} ${suffix}` : baseFull;
-
     const result = {
       postalCode: juso.zipNo || '',
-      fullAddress: fullWithDongHo,
+      fullAddress: juso.roadAddr || juso.jibunAddr || '',
       sido: juso.siNm || '',
       sigungu: juso.sggNm || ''
     };
@@ -485,12 +409,11 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
           
           if (common?.errorCode === '0' && results.juso?.[0]) {
             const juso = results.juso[0];
-            const baseFull = juso.roadAddr || juso.jibunAddr || '';
             jobData.results.push({
               row: i + 2,
               originalAddress: address,
               postalCode: juso.zipNo || '',
-              fullAddress: baseFull,
+              fullAddress: juso.roadAddr || juso.jibunAddr || '',
               sido: juso.siNm || '',
               sigungu: juso.sggNm || ''
             });
@@ -531,23 +454,19 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         const existingColumns = headers.map(h => String(h).toLowerCase());
         const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
         const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
-        const hasDetail = existingColumns.some(col => col.includes('상세'));
-        // '시도', '시군구' 컬럼 제거 후 우편번호/도로명주소만 추가
-        const removeHeader = (h) => {
-          const s = String(h || '').toLowerCase();
-          return s.includes('시도') || s.includes('시/도') || s.includes('sido') ||
-                 s.includes('시군구') || s.includes('시/군/구') || s.includes('sigungu');
-        };
-        const keepIndices = headers.map((h, i) => ({ h, i })).filter(x => !removeHeader(x.h)).map(x => x.i);
-        const baseHeaders = keepIndices.map(i => headers[i]);
-        const newHeaders = [...baseHeaders];
-        if (!hasFullAddress) newHeaders.push('도로명주소');
-        if (!hasDetail) newHeaders.push('상세주소');
+        const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
+        const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+
+        // 새로 추가할 컬럼들만 선별
+        const newHeaders = [...headers];
         if (!hasPostalCode) newHeaders.push('우편번호');
+        if (!hasFullAddress) newHeaders.push('도로명주소');
+        if (!hasSido) newHeaders.push('시도');
+        if (!hasSigungu) newHeaders.push('시군구');
 
         console.log('Original headers:', headers);
         console.log('Existing columns lowercase:', existingColumns);
-        console.log('Duplicate check:', { hasPostalCode, hasFullAddress });
+        console.log('Duplicate check:', { hasPostalCode, hasFullAddress, hasSido, hasSigungu });
         console.log('New headers:', newHeaders);
 
         // 결과 데이터를 엑셀 형식으로 변환
@@ -556,20 +475,25 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         // 원본 데이터에 우편번호 정보 추가
         limitedRows.forEach((row, index) => {
           const result = jobData.results.find(r => r.row === index + 2);
-          const sourceRow = Array.isArray(row) ? row : Object.values(row || {});
-          const newRow = keepIndices.map(i => sourceRow[i] ?? '');
-          const detail = extractDongHo(sourceRow[addressColumnIndex]);
+          const newRow = Array.isArray(row) ? [...row] : Object.values(row || {});
+          
+          // 헤더와 행의 길이 맞춤
+          while (newRow.length < headers.length) {
+            newRow.push('');
+          }
           
           // 중복되지 않는 컬럼들만 추가
           if (result) {
-            if (!hasFullAddress) newRow.push(result.fullAddress || '');
-            if (!hasDetail) newRow.push(detail || '');
             if (!hasPostalCode) newRow.push(result.postalCode || '');
+            if (!hasFullAddress) newRow.push(result.fullAddress || '');
+            if (!hasSido) newRow.push(result.sido || '');
+            if (!hasSigungu) newRow.push(result.sigungu || '');
           } else {
             // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
-            if (!hasFullAddress) newRow.push('');
-            if (!hasDetail) newRow.push(detail || '');
             if (!hasPostalCode) newRow.push('');
+            if (!hasFullAddress) newRow.push('');
+            if (!hasSido) newRow.push('');
+            if (!hasSigungu) newRow.push('');
           }
           
           resultData.push(newRow);
@@ -688,12 +612,11 @@ app.get('/api/file/status/:jobId', async (req, res) => {
             
             if (common?.errorCode === '0' && results.juso?.[0]) {
               const juso = results.juso[0];
-              const baseFull = juso.roadAddr || juso.jibunAddr || '';
               job.results.push({
                 row: i + 2,
                 originalAddress: address,
                 postalCode: juso.zipNo || '',
-                fullAddress: baseFull,
+                fullAddress: juso.roadAddr || juso.jibunAddr || '',
                 sido: juso.siNm || '',
                 sigungu: juso.sggNm || ''
               });
@@ -792,19 +715,15 @@ app.get('/api/file/download/:jobId', (req, res) => {
       const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
       const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
       const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
-      const hasDetail = existingColumns.some(col => col.includes('상세'));
-      // '시도', '시군구' 제거 후 우편번호/도로명주소만 추가
-      const removeHeader = (h) => {
-        const s = String(h || '').toLowerCase();
-        return s.includes('시도') || s.includes('시/도') || s.includes('sido') ||
-               s.includes('시군구') || s.includes('시/군/구') || s.includes('sigungu');
-      };
-      const keepIndices = safeHeaders.map((h, i) => ({ h, i })).filter(x => !removeHeader(x.h)).map(x => x.i);
-      const baseHeaders = keepIndices.map(i => safeHeaders[i]);
-      const newHeaders = [...baseHeaders];
-      if (!hasFullAddress) newHeaders.push('도로명주소');
-      if (!hasDetail) newHeaders.push('상세주소');
+      const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
+      const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+
+      // 새로 추가할 컬럼들만 선별
+      const newHeaders = [...safeHeaders];
       if (!hasPostalCode) newHeaders.push('우편번호');
+      if (!hasFullAddress) newHeaders.push('도로명주소');
+      if (!hasSido) newHeaders.push('시도');
+      if (!hasSigungu) newHeaders.push('시군구');
       
       // 결과 데이터를 엑셀 형식으로 변환
       const resultData = [newHeaders];
@@ -813,22 +732,25 @@ app.get('/api/file/download/:jobId', (req, res) => {
       if (Array.isArray(job.rows)) {
         job.rows.forEach((row, index) => {
           const result = job.results?.find(r => r.row === index + 2);
-          const sourceRow = Array.isArray(row) ? row : Object.values(row || {});
-          // 주소 컬럼 자동 탐색 (시/군/구 제거 이후에도 유지)
-          const addrIdx = safeHeaders.findIndex(h => typeof h === 'string' && (h.includes('주소') || /addr|address/i.test(h)));
-          const newRow = keepIndices.map(i => sourceRow[i] ?? '');
-          const detail = extractDongHo(addrIdx >= 0 ? sourceRow[addrIdx] : '');
+          const newRow = Array.isArray(row) ? [...row] : Object.values(row || {}); // 배열이 아닌 경우 대응
+          
+          // 헤더와 행의 길이 맞춤
+          while (newRow.length < safeHeaders.length) {
+            newRow.push('');
+          }
           
           // 중복되지 않는 컬럼들만 추가
           if (result) {
-            if (!hasFullAddress) newRow.push(result.fullAddress || '');
-            if (!hasDetail) newRow.push(detail || '');
             if (!hasPostalCode) newRow.push(result.postalCode || '');
+            if (!hasFullAddress) newRow.push(result.fullAddress || '');
+            if (!hasSido) newRow.push(result.sido || '');
+            if (!hasSigungu) newRow.push(result.sigungu || '');
           } else {
             // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
-            if (!hasFullAddress) newRow.push('');
-            if (!hasDetail) newRow.push(detail || '');
             if (!hasPostalCode) newRow.push('');
+            if (!hasFullAddress) newRow.push('');
+            if (!hasSido) newRow.push('');
+            if (!hasSigungu) newRow.push('');
           }
           
           resultData.push(newRow);
@@ -885,35 +807,30 @@ app.get('/api/file/label-data/:jobId', (req, res) => {
     const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
     const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
     const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
-    const hasDetail = existingColumns.some(col => col.includes('상세'));
-    // '시도', '시군구' 제거 후 우편번호/도로명주소만 추가
-    const removeHeader = (h) => {
-      const s = String(h || '').toLowerCase();
-      return s.includes('시도') || s.includes('시/도') || s.includes('sido') ||
-             s.includes('시군구') || s.includes('시/군/구') || s.includes('sigungu');
-    };
-    const keepIndices = safeHeaders.map((h, i) => ({ h, i })).filter(x => !removeHeader(x.h)).map(x => x.i);
-    const baseHeaders = keepIndices.map(i => safeHeaders[i]);
-    const newHeaders = [...baseHeaders];
-    if (!hasFullAddress) newHeaders.push('도로명주소');
-    if (!hasDetail) newHeaders.push('상세주소');
+    const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
+    const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+
+    const newHeaders = [...safeHeaders];
     if (!hasPostalCode) newHeaders.push('우편번호');
+    if (!hasFullAddress) newHeaders.push('도로명주소');
+    if (!hasSido) newHeaders.push('시도');
+    if (!hasSigungu) newHeaders.push('시군구');
 
     const rows = Array.isArray(job.rows) ? job.rows : [];
     const resultRows = rows.map((row, index) => {
       const result = job.results?.find(r => r.row === index + 2);
-      const sourceRow = Array.isArray(row) ? row : Object.values(row || {});
-      const addrIdx = safeHeaders.findIndex(h => typeof h === 'string' && (h.includes('주소') || /addr|address/i.test(h)));
-      const newRow = keepIndices.map(i => sourceRow[i] ?? '');
-      const detail = extractDongHo(addrIdx >= 0 ? sourceRow[addrIdx] : '');
+      const newRow = Array.isArray(row) ? [...row] : Object.values(row || {});
+      while (newRow.length < safeHeaders.length) newRow.push('');
       if (result) {
-        if (!hasFullAddress) newRow.push(result.fullAddress || '');
-        if (!hasDetail) newRow.push(detail || '');
         if (!hasPostalCode) newRow.push(result.postalCode || '');
+        if (!hasFullAddress) newRow.push(result.fullAddress || '');
+        if (!hasSido) newRow.push(result.sido || '');
+        if (!hasSigungu) newRow.push(result.sigungu || '');
       } else {
-        if (!hasFullAddress) newRow.push('');
-        if (!hasDetail) newRow.push(detail || '');
         if (!hasPostalCode) newRow.push('');
+        if (!hasFullAddress) newRow.push('');
+        if (!hasSido) newRow.push('');
+        if (!hasSigungu) newRow.push('');
       }
       return newRow;
     });
@@ -931,69 +848,53 @@ app.get('/api/file/label-data/:jobId', (req, res) => {
   }
 });
 
-// HWPX 다운로드: 새로운 HWPX 생성기 사용
+// HWPX 다운로드: 라벨 데이터를 HWPX로 패키징하여 반환
 app.get('/api/file/hwpx/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
     const nameSuffix = req.query.nameSuffix || '';
-    
-    // 작업 존재 여부 확인
     if (!global.excelJobs || !global.excelJobs[jobId]) {
       return res.status(404).json({ success: false, error: '작업을 찾을 수 없습니다.' });
     }
-    
     const job = global.excelJobs[jobId];
     if (job.status !== 'completed') {
       return res.status(400).json({ success: false, error: '작업이 완료되지 않았습니다.' });
     }
 
-    // 새로운 HWPX 생성기 사용
-    const { HwpxGenerator } = require('./hwpx-generator');
-    const generator = new HwpxGenerator();
-    
-    // 컬럼 탐지를 위한 기존 로직 재사용
-    const { detectColumns } = require('./hwpx');
+    const { buildHwpxFromTemplate, detectColumns } = require('./hwpx');
     const headers = Array.isArray(job.headers) ? job.headers : [];
     const rows = Array.isArray(job.rows) ? job.rows : [];
     const cols = detectColumns(headers);
-    
-    console.log('HWPX Generator: Processing', rows.length, 'items');
-    console.log('HWPX Generator: Column detection result:', cols);
 
-    // 라벨 데이터 구성
+    // rows + results를 합쳐 최종 표시 데이터 구성
+    // 주소는 항상 도로명주소(결과 fullAddress: roadAddr 우선)를 우선 사용
     const items = rows.map((row, idx) => {
       const arr = Array.isArray(row) ? row : Object.values(row || {});
       const get = i => (i >= 0 && i < arr.length) ? String(arr[i] || '') : '';
       const r = job.results?.find(r => r.row === idx + 2);
       
-      // 주소: API 결과 우선, 없으면 원본 데이터
+      // 1) 주소: 결과의 fullAddress(roadAddr 우선)를 최우선 사용, 없으면 원본 컬럼
       let address = r?.fullAddress || get(cols.address) || '';
-      let detailAddress = get(cols.detailAddress);
+
+      // 2) 성명: 원본 컬럼 우선
       let name = get(cols.name);
-      
-      // 우편번호: 원본 컬럼 우선, 없으면 API 결과
+
+      // 3) 우편번호: 원본 컬럼 없으면 결과값 사용
       let postalCode = get(cols.postalCode);
       if (!postalCode) {
         postalCode = r?.postalCode || '';
       }
 
-      return { address, detailAddress, name, postalCode };
+      return { address, name, postalCode };
     });
 
-    // HWPX 생성
-    const buffer = await generator.generate(items, { nameSuffix });
-    
-    // 응답 헤더 설정
-    res.setHeader('Content-Type', 'application/octet-stream');
+    const buf = await buildHwpxFromTemplate(items, { nameSuffix });
+    res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="labels_${jobId}.hwpx"`);
-    res.send(buffer);
-    
+    return res.send(buf);
   } catch (error) {
-    console.error('HWPX Generator Error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: `HWPX 생성 실패: ${error.message}` 
-    });
+    console.error('HWPX build error:', error);
+    res.status(500).json({ success: false, error: 'HWPX 생성 중 오류가 발생했습니다.' });
   }
 });
 

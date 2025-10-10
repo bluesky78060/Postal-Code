@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>우편번호 자동 입력 시스템</title>
+    <link rel="stylesheet" href="/label-print.css">
     <style>
         * {
             margin: 0;
@@ -53,6 +54,40 @@
             border-bottom: 2px solid #f0f0f0;
             margin-bottom: 30px;
         }
+
+        /* API 연결 바 */
+        .api-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8f9fa;
+            border: 1px solid #e6e8eb;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .api-bar input[type="text"] {
+            flex: 1 1 320px;
+            min-width: 260px;
+            padding: 8px 10px;
+            border: 1px solid #dadde1;
+            border-radius: 8px;
+        }
+        .api-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95rem;
+        }
+        .api-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+        .api-dot.ok { background: #2ecc71; }
+        .api-dot.fail { background: #e74c3c; }
 
         .tab {
             flex: 1;
@@ -154,6 +189,47 @@
             transition: width 0.3s ease;
         }
 
+        /* 모달 기본 스타일 */
+        .modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 24px;
+            z-index: 1000;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #fff;
+            width: min(960px, 95vw);
+            max-height: 90vh;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .modal-body {
+            padding: 16px;
+            overflow: auto;
+            background: #fafafa;
+        }
+        /* 모달 내 시트 프리뷰 정렬 */
+        #labelModalSheet {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
         .result {
             background: #f8f9fa;
             border-radius: 10px;
@@ -178,98 +254,95 @@
             color: #27ae60;
         }
 
-        /* 라벨 출력 관련 스타일 - A4 2열 9행 */
-        .label-sheet {
-            width: 210mm;
-            height: 297mm;
-            background: white;
-            border: 1px solid #ccc;
-            margin: 20px auto;
-            padding: 8.5mm 5mm;
-            display: grid;
-            grid-template-columns: repeat(2, 100mm);
-            grid-template-rows: repeat(9, 30mm);
-            gap: 0;
-            transform-origin: top left;
-            transform: scale(0.4);
-            justify-content: center;
-        }
-
-        .label-item {
-            width: 100mm;
-            height: 30mm;
-            border: 0.5px solid #ddd;
-            padding: 3mm;
-            box-sizing: border-box;
-            font-size: 10pt;
-            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-            line-height: 1.2;
-            overflow: hidden;
+        /* 라벨 미리보기 컨테이너 (다중 시트 스택) */
+        #labelSheet {
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            text-align: right;
-        }
-
-        .label-item .address {
-            font-size: 10pt;
-            line-height: 1.2;
-            margin-bottom: 1mm;
-            color: #2c3e50;
-        }
-
-        .label-item .name {
-            font-size: 12pt;
-            font-weight: bold;
-            margin-bottom: 1mm;
-            color: #2c3e50;
-        }
-
-        .label-item .postal-code {
-            font-size: 11pt;
-            font-weight: normal;
-            margin-top: auto;
-            color: #2c3e50;
+            gap: 20px;
+            align-items: flex-start;
         }
 
         .field-mapping {
             display: flex;
             align-items: center;
-            margin: 5px 0;
-            gap: 10px;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+            gap: 16px 24px;          /* 세로 16px, 가로 24px 간격 */
+            margin: 10px 0 14px 0;   /* 각 필드 그룹 간 여백 확대 */
         }
 
         .field-mapping label {
-            min-width: 80px;
+            min-width: 120px;        /* 라벨 영역 넉넉히 확보 */
             font-weight: 600;
         }
 
         .field-mapping select {
-            padding: 5px;
+            padding: 8px 10px;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            min-width: 150px;
+            border-radius: 6px;
+            min-width: 200px;        /* 셀렉트 박스 폭 확대 */
+            background: #fff;
         }
 
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-            
-            .label-sheet, .label-sheet * {
-                visibility: visible;
-            }
-            
-            .label-sheet {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 210mm;
-                height: 297mm;
-                transform: none;
-                margin: 0;
-                padding: 0;
-            }
+        /* 인쇄용 스타일은 /label-print.css 에 정의됨 */
+
+        /* === 라벨 필드 설정 영역 가독성 개선 === */
+        /* 필드 매핑 전체 영역을 2열 그리드로 통일 */
+        #labelFieldMapping {
+          display: grid;
+          grid-template-columns: 120px 1fr; /* 왼쪽 라벨 120px, 오른쪽 컨트롤 1fr */
+          column-gap: 20px;                 /* 라벨과 셀렉트 간격 */
+          row-gap: 14px;                    /* 줄 간격 */
+          margin-top: 10px;
+        }
+
+        /* 기존 field-mapping 래퍼 단순화 */
+        #labelFieldMapping .field-mapping {
+          display: contents; /* label과 select를 직접 그리드에 올림 */
+        }
+
+        /* 라벨 스타일: 폭, 자간, 줄간격 */
+        #labelFieldMapping .field-mapping label {
+          font-weight: 600;
+          color: #333;
+          line-height: 1.8;
+          letter-spacing: 0.2px;
+          align-self: center;
+        }
+
+        /* 셀렉트 박스: 폭 통일, 여백/테두리 개선 */
+        #labelFieldMapping .field-mapping select {
+          width: 280px;
+          max-width: 100%;
+          padding: 8px 10px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          background: #fff;
+          line-height: 1.6;
+          font-size: 15px;
+        }
+
+        /* 성명 뒤 호칭 셀렉트도 같은 폭으로 맞춤 */
+        #nameSuffix {
+          width: 280px !important;
+          padding: 8px 10px !important;
+          border: 1px solid #ddd !important;
+          border-radius: 6px !important;
+          line-height: 1.6 !important;
+          font-size: 15px !important;
+          background: #fff !important;
+          margin-left: 0 !important;
+        }
+
+        /* 기존 .field-mapping 구식 규칙 약화 */
+        .field-mapping {
+          margin: 0 !important;
+          gap: 0 !important;
+        }
+
+        /* 하단 배포 문구 숨김 */
+        #deployInfo {
+          display: none !important;
         }
     </style>
 </head>
@@ -281,6 +354,13 @@
         </div>
 
         <div class="content">
+            <div class="api-bar">
+                <span style="font-weight:600; color:#555;">API</span>
+                <input id="apiBaseInput" type="text" placeholder="예: http://localhost:3005/api">
+                <button class="btn" id="btnSaveApiBase" title="API 주소 저장">저장</button>
+                <button class="btn" id="btnCheckApi" title="API 연결 확인">연결 확인</button>
+                <span class="api-status" id="apiStatus"><span class="api-dot"></span><span id="apiStatusText">확인 전</span></span>
+            </div>
             <div class="tabs">
                 <button class="tab active" data-tab="search">주소 검색</button>
                 <button class="tab" data-tab="upload">엑셀 업로드</button>
@@ -368,25 +448,42 @@
                             </select>
                         </div>
                     </div>
-                    <button class="btn" id="btnGenerateLabels">🏷️ 라벨 생성</button>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button class="btn" id="btnGenerateLabels">🏷️ 라벨 생성</button>
+                        <button class="btn" id="btnLabelReset">↩️ 초기화</button>
+                    </div>
                 </div>
 
                 <div id="labelPreview" class="hidden">
                     <h3>🖨️ 라벨 미리보기</h3>
                     <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;">
                         <button class="btn" id="btnPrintLabels">🖨️ 인쇄하기</button>
-                        <button class="btn" id="btnDownloadHWPX">📥 HWPX 다운로드</button>
-                        <button class="btn" id="btnDownloadPDF">📥 PDF 다운로드</button>
-                        <button class="btn" id="btnLabelReset">↩️ 초기화</button>
                     </div>
-                    <div id="labelSheet" class="label-sheet">
-                        <!-- 라벨 시트가 여기에 표시됩니다 -->
+                    <div id="labelSheet" class="label-sheet" style="display:none">
+                        <!-- (모달로 대체됨) -->
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="/app.js"></script>
+    <!-- 라벨 미리보기/인쇄 모달 -->
+    <div id="labelModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+        <div class="modal-content" id="labelModalContent">
+            <div class="modal-header">
+                <h3>🖨️ 라벨 미리보기</h3>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn" id="btnModalPrint">🖨️ 인쇄</button>
+                    <button class="btn" id="btnModalReset">↩️ 초기화</button>
+                    <button class="btn" id="btnModalClose">닫기</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="labelModalSheet"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js?v=rollback-073037f"></script>
 </body>
 </html>

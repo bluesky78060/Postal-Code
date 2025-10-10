@@ -1,16 +1,93 @@
 (() => {
-  const API_BASE = `${window.location.origin}/api`;
+  // API 엔드포인트 자동 결정: window.API_BASE > 동일 오리진('/api') > localhost:3001
+  const API_BASE = (() => {
+    try {
+      // 수동 오버라이드 (전역 또는 localStorage)
+      if (window.API_BASE) return window.API_BASE.replace(/\/$/, '');
+      const stored = window.localStorage && window.localStorage.getItem('API_BASE');
+      if (stored) return stored.replace(/\/$/, '');
+      // 동일 오리진 우선 (http/https인 경우에만)
+      if (window.location && window.location.origin) {
+        const proto = String(window.location.protocol || '').toLowerCase();
+        if (proto.startsWith('http')) {
+          return `${window.location.origin}/api`;
+        }
+      }
+    } catch (_) {}
+    // 최후 수단: 로컬 기본값
+    return 'http://localhost:3001/api';
+  })();
+  if (String(window.location.protocol).toLowerCase().startsWith('file')) {
+    console.warn('[App] file:// 로 열렸습니다. API 서버 주소를 localStorage.API_BASE에 설정하세요. 예) localStorage.setItem(\'API_BASE\', \'http://localhost:3005/api\')');
+  }
+  console.log('[App] Using API_BASE:', API_BASE);
+
+  // API 연결 상태 표시
+  async function checkApiHealth() {
+    const statusEl = document.getElementById('apiStatus');
+    const dot = statusEl?.querySelector('.api-dot');
+    const text = document.getElementById('apiStatusText');
+    if (dot) { dot.classList.remove('ok', 'fail'); }
+    if (text) { text.textContent = '확인 중...'; }
+
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 5000);
+      const res = await fetch(`${API_BASE}/health`, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json().catch(() => ({}));
+      if (dot) dot.classList.add('ok');
+      if (text) text.textContent = `연결됨 (${new URL(API_BASE).origin})`;
+      return data;
+    } catch (e) {
+      if (dot) dot.classList.add('fail');
+      if (text) text.textContent = `연결 실패: ${e.message}`;
+      return null;
+    }
+  }
+
+  function saveApiBase() {
+    const input = document.getElementById('apiBaseInput');
+    const val = (input?.value || '').trim();
+    if (!val) {
+      window.localStorage.removeItem('API_BASE');
+      alert('API 주소가 비어 있어 기본 규칙으로 복원합니다.');
+    } else {
+      window.localStorage.setItem('API_BASE', val);
+      alert(`API 주소를 저장했습니다:\n${val}\n페이지를 새로고침합니다.`);
+    }
+    window.location.reload();
+  }
+
   
   // 라벨 관련 전역 변수
   let labelData = null;
   let fieldMappings = {};
   let currentLabelJobId = null;
+  // 모달 포커스 관리
+  let lastFocusedElement = null;
+  let modalKeydownHandler = null;
 
   function switchTab(tabName, clickedButton) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     if (clickedButton) clickedButton.classList.add('active');
     document.getElementById(tabName).classList.add('active');
+    // 탭 전환 시 진행 표시/결과 충돌 방지
+    if (tabName === 'label') {
+      const upProg = document.getElementById('uploadProgress');
+      const upRes = document.getElementById('uploadResult');
+      if (upProg) upProg.classList.add('hidden');
+      if (upRes) { upRes.classList.add('hidden'); upRes.innerHTML = ''; }
+    } else if (tabName === 'upload') {
+      const lp = document.getElementById('labelUploadProgress');
+      const ldp = document.getElementById('labelDataPreview');
+      const lpv = document.getElementById('labelPreview');
+      if (lp) lp.classList.add('hidden');
+      if (ldp) ldp.classList.add('hidden');
+      if (lpv) lpv.classList.add('hidden');
+    }
   }
 
   async function searchAddress() {
@@ -94,91 +171,29 @@
 
     progressDiv.classList.remove('hidden');
     resultDiv.classList.add('hidden');
-    updateProgress(0, '파일 업로드 및 처리 중...');
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      
-      // 응답 헤더 확인
-      const contentType = response.headers.get('content-type') || '';
-      const contentDisposition = response.headers.get('content-disposition') || '';
-
-      // 첨부파일 다운로드 응답인지 우선 확인
-      const looksLikeFile = /attachment/i.test(contentDisposition) ||
-                            /application\/(vnd\.openxmlformats-officedocument|octet-stream)/i.test(contentType);
-
-      // JSON 파싱 시도 (clone 사용, 실패 시 파일로 처리)
-      let parsedJson = null;
-      let isJson = /application\/json/i.test(contentType);
-      if (!looksLikeFile) {
-        try {
-          parsedJson = await response.clone().json();
-          isJson = true;
-        } catch (_) {
-          isJson = false;
-        }
-      }
-
-      if (isJson && parsedJson) {
-        // JSON 응답 (처리 결과)
-        const data = parsedJson;
-        progressDiv.classList.add('hidden');
-        
-        if (data.success) {
-          if (data.data && data.data.jobId) {
-            currentLabelJobId = data.data.jobId;
-          }
-          showResult(resultDiv, `
-            <h3>✅ 파일 처리가 완료되었습니다!</h3>
-            <p><strong>처리된 행:</strong> ${data.data.processed}개</p>
-            <p><strong>성공:</strong> ${data.data.successful}개</p>
-            <p><strong>실패:</strong> ${data.data.failed}개</p>
-            <div style="margin-top:12px">
-              <p>❌ 직접 다운로드 기능이 실패했습니다. 결과 데이터:</p>
-              <button class="btn" data-reset-upload>↩️ 초기화</button>
-            </div>
-          `, 'success');
-        } else {
-          showResult(resultDiv, `
-            ❌ ${data.error}
-            <div style="margin-top:12px">
-              <button class="btn" data-reset-upload>↩️ 초기화</button>
-            </div>
-          `, 'error');
-        }
+      const data = await response.json();
+      if (data.success) {
+        const jobId = data.data.jobId;
+        checkProgress(jobId);
       } else {
-        // 파일 다운로드 응답
         progressDiv.classList.add('hidden');
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `postal_result_${new Date().getTime()}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
         showResult(resultDiv, `
-          <h3>✅ 파일 처리 및 다운로드 완료!</h3>
-          <p><strong>파일:</strong> ${file.name}</p>
-          <p><strong>처리:</strong> 최대 200개 행 처리됨 (중복 제거 포함)</p>
-          <p><strong>결과:</strong> 우편번호가 추가된 엑셀 파일이 다운로드되었습니다</p>
-          <p><strong>📊 중복 주소가 자동으로 제거되었습니다</strong></p>
+          ❌ ${data.error}
           <div style="margin-top:12px">
             <button class="btn" data-reset-upload>↩️ 초기화</button>
           </div>
-        `, 'success');
+        `, 'error');
       }
-      
     } catch (error) {
       progressDiv.classList.add('hidden');
       showResult(resultDiv, `
-        ❌ 업로드 중 오류가 발생했습니다: ${error.message}
+        ❌ 업로드 중 오류가 발생했습니다.
         <div style="margin-top:12px">
           <button class="btn" data-reset-upload>↩️ 초기화</button>
         </div>
@@ -288,64 +303,21 @@
       const formData = new FormData();
       formData.append('file', file);
 
-      console.log('API 호출:', `${API_BASE}/file/upload?mode=label`);
-      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
+      console.log('API 호출:', `${API_BASE}/file/upload`);
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      const data = await response.json();
       
-      // 응답 헤더 확인
-      const contentType = response.headers.get('content-type') || '';
-      const contentDisposition = response.headers.get('content-disposition') || '';
+      console.log('서버 응답:', data);
       
-      // 첨부파일 다운로드 응답인지 우선 확인
-      const looksLikeFile = /attachment/i.test(contentDisposition) ||
-                            /application\/(vnd\.openxmlformats-officedocument|octet-stream)/i.test(contentType);
-
-      // JSON 파싱 시도 (clone 사용, 실패 시 파일로 처리)
-      let parsedJson = null;
-      let isJson = /application\/json/i.test(contentType);
-      if (!looksLikeFile) {
-        try {
-          parsedJson = await response.clone().json();
-          isJson = true;
-        } catch (_) {
-          isJson = false;
-        }
-      }
-
-      if (isJson && parsedJson) {
-        // JSON 응답 (처리 결과)
-        const data = parsedJson;
-        console.log('서버 응답:', data);
-        
-        if (data.success) {
-          const jobId = data.data.jobId;
-          currentLabelJobId = jobId;
-          console.log('JobID:', jobId);
-          updateLabelProgress(10, '파일 처리 중...');
-          await waitForLabelProcessing(jobId);
-        } else {
-          document.getElementById('labelUploadProgress').classList.add('hidden');
-          alert('파일 업로드 실패: ' + data.error);
-        }
+      if (data.success) {
+        const jobId = data.data.jobId;
+        currentLabelJobId = jobId;
+        console.log('JobID:', jobId);
+        updateLabelProgress(10, '파일 처리 중...');
+        await waitForLabelProcessing(jobId);
       } else {
-        // 파일 다운로드 응답
         document.getElementById('labelUploadProgress').classList.add('hidden');
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `postal_result_${new Date().getTime()}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
-        console.log('✅ 라벨 파일 다운로드 완료');
-        alert('파일 처리 및 다운로드가 완료되었습니다!');
-        
-        // 샘플 데이터로 라벨 미리보기 생성
-        labelData = generateSampleData();
-        showLabelDataPreview();
+        alert('파일 업로드 실패: ' + data.error);
       }
     } catch (error) {
       console.error('파일 처리 오류:', error);
@@ -471,15 +443,110 @@
       return;
     }
 
+    // 미리보기용 컬럼 중복 정리 (우편번호/도로명주소 등 동의어/중복값 제거)
+    const previewColumns = dedupePreviewColumns(columns, displayData);
+
     // 데이터 테이블 생성
-    const tableHtml = createDataTable(displayData, columns);
+    const tableHtml = createDataTable(displayData, previewColumns);
     document.getElementById('labelDataTable').innerHTML = tableHtml;
 
     // 필드 매핑 UI 생성
-    createFieldMappings(columns);
+    createFieldMappings(previewColumns);
 
     // 미리보기 영역 표시
     document.getElementById('labelDataPreview').classList.remove('hidden');
+  }
+
+  // 미리보기 전용: 동의어/중복 값 컬럼 제거
+  function dedupePreviewColumns(columns, data) {
+    if (!Array.isArray(columns) || columns.length === 0) return columns || [];
+
+    const lower = (s) => String(s || '').toLowerCase();
+    const norm = (s) => lower(s).replace(/[\s_]/g, '');
+
+    const groups = {
+      postal: ['우편번호', 'postalcode', 'postal_code', 'postcode', 'zip', 'zipcode'],
+      address: ['도로명주소', 'address', 'fulladdress', '전체주소', '주소'],
+      name: ['성명', '이름', 'name']
+    };
+
+    const inGroup = (col, keys) => keys.includes(norm(col));
+
+    // 중복 값 판정: 앞쪽 몇 행 비교로 동일 값이면 중복으로 간주
+    const sameValues = (a, b) => {
+      for (let i = 0; i < Math.min(10, data.length); i++) {
+        const row = data[i];
+        const va = (typeof row === 'object' && !Array.isArray(row)) ? row[a] : row[columns.indexOf(a)];
+        const vb = (typeof row === 'object' && !Array.isArray(row)) ? row[b] : row[columns.indexOf(b)];
+        if ((va || '') !== (vb || '')) return false;
+      }
+      return true;
+    };
+
+    // 우선순위: address는 '도로명주소'를 선호, postal은 '우편번호' 또는 'postalCode'를 선호
+    const preferOrder = {
+      name: ['성명', '이름', 'name'],
+      address: ['도로명주소', 'address', 'fullAddress', '전체주소', '주소'],
+      postal: ['우편번호', 'postalCode', 'postal_code', 'postcode', 'zip', 'zipcode']
+    };
+
+    const chosen = new Set();
+    let keptName = null;
+    let keptAddress = null;
+    let keptPostal = null;
+
+    // 먼저 address/postal 그룹 처리
+    // 이름 우선 선택(있으면)
+    {
+      const candidates = columns.filter(c => inGroup(c, groups.name));
+      if (candidates.length) {
+        const ordered = preferOrder.name
+          .map(k => candidates.find(c => norm(c) === norm(k)))
+          .filter(Boolean)
+          .concat(candidates.filter(c => !preferOrder.name.some(k => norm(k) === norm(c))));
+        keptName = ordered[0] || candidates[0];
+        if (keptName) chosen.add(keptName);
+      }
+    }
+
+    ['address', 'postal'].forEach((g) => {
+      const candidates = columns.filter(c => inGroup(c, groups[g]));
+      if (candidates.length === 0) return;
+      // 동일 값 중복 제거
+      let kept = null;
+      // 우선순위에 따라 보관할 후보 선택
+      const ordered = preferOrder[g]
+        .map(k => candidates.find(c => norm(c) === norm(k)))
+        .filter(Boolean)
+        .concat(candidates.filter(c => !preferOrder[g].some(k => norm(k) === norm(c))));
+      for (const col of ordered) {
+        if (!kept) { kept = col; continue; }
+        if (!sameValues(kept, col)) {
+          // 값이 다르면 보조 컬럼으로 허용 (단, 미리보기에서는 하나만 보여주고, 매핑 선택에는 포함시키기 위해 result에 넣지 않음)
+          continue;
+        }
+      }
+      if (kept) {
+        if (g === 'address') keptAddress = kept; else keptPostal = kept;
+        chosen.add(kept);
+      }
+    });
+
+    // 원하는 미리보기 순서: 성명 → 도로명주소 → 우편번호 → 나머지
+    const orderedOut = [];
+    if (keptName) orderedOut.push(keptName);
+    if (keptAddress) orderedOut.push(keptAddress);
+    if (keptPostal) orderedOut.push(keptPostal);
+
+    columns.forEach((c) => {
+      if (orderedOut.includes(c)) return;
+      // address/postal 그룹의 중복 후보는 미리보기에서는 제외
+      if (inGroup(c, groups.address)) return;
+      if (inGroup(c, groups.postal)) return;
+      orderedOut.push(c);
+    });
+
+    return orderedOut.length ? orderedOut : columns;
   }
 
   function createDataTable(data, columns) {
@@ -524,43 +591,48 @@
     const fields = [
       { key: 'name', label: '이름' },
       { key: 'address', label: '주소' },
-      { key: 'detailAddress', label: '상세주소' },
+      { key: 'detail', label: '상세주소' },
       { key: 'postalCode', label: '우편번호' }
     ];
 
-    function isDefaultSelected(fieldKey, col) {
-      const lc = String(col || '').toLowerCase();
-      switch (fieldKey) {
-        case 'name':
-          return lc.includes('이름') || lc.includes('name');
-        case 'address':
-          return lc.includes('주소') || lc.includes('address') || lc.includes('addr') || lc.includes('도로명');
-        case 'detailAddress':
-          return lc.includes('상세주소') || lc.includes('상세') || lc.includes('detail') || 
-                 lc.includes('세부주소') || lc.includes('추가주소') || lc.includes('아파트') || 
-                 lc.includes('동호수') || lc.includes('호수') || lc.includes('동') || 
-                 lc.includes('층') || lc.includes('호');
-        case 'postalCode':
-          return lc.includes('우편') || lc.includes('postal') || lc.includes('zip');
-        default:
-          return false;
-      }
-    }
+    const synonyms = {
+      name: ['성명', '이름', 'name'],
+      address: ['도로명주소', '전체주소', 'address', 'fulladdress', '주소'],
+      detail: ['상세주소', '상세', '동호', '동/호', '동 호', '동', '호'],
+      postalCode: ['우편번호', 'postalcode', 'postal_code', 'postcode', 'zip', 'zipcode']
+    };
+    const norm = (s) => String(s || '').toLowerCase();
+    const isMatch = (col, key) => synonyms[key].some(k => norm(col).includes(norm(k)));
 
+    const rowStyle = 'display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:16px 24px;margin:10px 0 14px 0';
+    const lblStyle = 'min-width:120px;font-weight:600;';
+    const selStyle = 'padding:8px 10px;border:1px solid #ddd;border-radius:6px;min-width:200px;background:#fff;';
     let html = '';
     fields.forEach(field => {
       html += `
-        <div class="field-mapping">
-          <label>${field.label}:</label>
-          <select data-field="${field.key}">
+        <div class="field-mapping" style="${rowStyle}">
+          <label style="${lblStyle}">${field.label}:</label>
+          <select data-field="${field.key}" style="${selStyle}">
             <option value="">선택 안함</option>
-            ${columns.map(col => `<option value="${col}" ${isDefaultSelected(field.key, col) ? 'selected' : ''}>${col}</option>`).join('')}
+            ${columns.map(col => `<option value="${col}" ${isMatch(col, field.key) ? 'selected' : ''}>${col}</option>`).join('')}
           </select>
         </div>
       `;
     });
 
     container.innerHTML = html;
+    // 안전장치: 잘못 삽입된 CSS 텍스트 노드 제거
+    try {
+      Array.from(container.childNodes).forEach(n => {
+        if (n.nodeType === Node.TEXT_NODE) {
+          const t = (n.textContent||'').trim();
+          if (t.startsWith('/*') || t.includes('.field-mapping')) {
+            container.removeChild(n);
+          }
+        }
+      });
+      container.querySelectorAll('pre,code,style').forEach(el => el.remove());
+    } catch(_) {}
 
     // 이벤트 리스너 추가
     container.querySelectorAll('select').forEach(select => {
@@ -574,7 +646,7 @@
     // 초기 매핑 설정
     fields.forEach(field => {
       const select = container.querySelector(`select[data-field="${field.key}"]`);
-      if (select.value) {
+      if (select && select.value) {
         fieldMappings[field.key] = select.value;
       }
     });
@@ -589,7 +661,7 @@
     // 데이터 형식 확인
     let dataRows;
     let headers;
-    
+
     if (Array.isArray(labelData)) {
       // 기존 배열 형식 (샘플 데이터)
       dataRows = labelData;
@@ -608,79 +680,159 @@
       return;
     }
 
-    const labelSheet = document.getElementById('labelSheet');
-    let html = '';
+    // 템플릿별 설정
+    const template = document.getElementById('labelTemplate')?.value || '2x9';
+    const templateMap = {
+      '2x9': { perSheet: 18, sheetClass: 'label-sheet-2x9' },
+      '3x7': { perSheet: 21, sheetClass: 'label-sheet-3x7' },
+      '4x6': { perSheet: 24, sheetClass: 'label-sheet-4x6' },
+    };
+    const { perSheet, sheetClass } = templateMap[template] || templateMap['2x9'];
 
-    const perPage = 18; // 2열 × 9행
+    // 모달용 컨테이너에 렌더링
+    const labelSheetContainer = document.getElementById('labelModalSheet');
+    if (!labelSheetContainer) {
+      alert('라벨 모달 컨테이너를 찾을 수 없습니다.');
+      return;
+    }
+    labelSheetContainer.innerHTML = '';
+
     const total = dataRows.length;
-    const totalPages = Math.ceil(total / perPage) || 1;
+    const sheetCount = Math.ceil(total / perSheet) || 1;
+    let dataIndex = 0;
+    const nameSuffix = document.getElementById('nameSuffix')?.value || '';
 
-    for (let p = 0; p < totalPages; p++) {
-      html += '<div class="label-page">';
-      const start = p * perPage;
-      const end = Math.min(start + perPage, total);
-      for (let i = start; i < end; i++) {
-        const rowData = dataRows[i];
-        let name = '', address = '', detailAddress = '', postalCode = '';
-        if (typeof rowData === 'object' && !Array.isArray(rowData)) {
-          name = fieldMappings.name ? rowData[fieldMappings.name] || '' : '';
-          address = fieldMappings.address ? rowData[fieldMappings.address] || '' : '';
-          detailAddress = fieldMappings.detailAddress ? rowData[fieldMappings.detailAddress] || '' : '';
-          postalCode = fieldMappings.postalCode ? rowData[fieldMappings.postalCode] || '' : '';
-        } else if (Array.isArray(rowData)) {
-          const nameIndex = headers.indexOf(fieldMappings.name);
-          const addressIndex = headers.indexOf(fieldMappings.address);
-          const detailIndex = headers.indexOf(fieldMappings.detailAddress);
-          const postalCodeIndex = headers.indexOf(fieldMappings.postalCode);
-          name = nameIndex >= 0 ? rowData[nameIndex] || '' : '';
-          address = addressIndex >= 0 ? rowData[addressIndex] || '' : '';
-          detailAddress = detailIndex >= 0 ? rowData[detailIndex] || '' : '';
-          postalCode = postalCodeIndex >= 0 ? rowData[postalCodeIndex] || '' : '';
+    for (let s = 0; s < sheetCount; s++) {
+      let sheetHtml = '';
+      for (let i = 0; i < perSheet; i++) {
+        if (dataIndex < total) {
+          const rowData = dataRows[dataIndex];
+          let name = '', address = '', detail = '', postalCode = '';
+
+          if (typeof rowData === 'object' && !Array.isArray(rowData)) {
+            // 객체 형태 (샘플 데이터)
+            name = fieldMappings.name ? (rowData[fieldMappings.name] ?? '') : '';
+            address = fieldMappings.address ? (rowData[fieldMappings.address] ?? '') : '';
+            detail = fieldMappings.detail ? (rowData[fieldMappings.detail] ?? '') : '';
+            postalCode = fieldMappings.postalCode ? (rowData[fieldMappings.postalCode] ?? '') : '';
+          } else if (Array.isArray(rowData)) {
+            // 배열 형태 (API 응답)
+            const nameIndex = headers.indexOf(fieldMappings.name);
+            const addressIndex = headers.indexOf(fieldMappings.address);
+            const detailIndex = headers.indexOf(fieldMappings.detail);
+            const postalCodeIndex = headers.indexOf(fieldMappings.postalCode);
+            name = nameIndex >= 0 ? (rowData[nameIndex] ?? '') : '';
+            address = addressIndex >= 0 ? (rowData[addressIndex] ?? '') : '';
+            detail = detailIndex >= 0 ? (rowData[detailIndex] ?? '') : '';
+            postalCode = postalCodeIndex >= 0 ? (rowData[postalCodeIndex] ?? '') : '';
+          }
+
+          if (name && nameSuffix) name = name + ' ' + nameSuffix;
+          const isLong = `${address}`.length > 25 || `${name}`.length > 18 || `${detail}`.length > 20;
+          sheetHtml += `
+            <div class="label-item${isLong ? ' long-content' : ''}">
+              <div class="label-address">${address ?? ''}</div>
+              ${detail ? `<div class=\"label-detail\">${detail}</div>` : ''}
+              <div class="label-name">${name ?? ''}</div>
+              <div class="label-postal-code">${postalCode ?? ''}</div>
+            </div>
+          `;
+          dataIndex++;
+        } else {
+          // 남는 칸은 빈 셀로 채움
+          sheetHtml += `<div class="label-item empty"></div>`;
         }
-        const nameSuffix = document.getElementById('nameSuffix')?.value || '';
-        if (name && nameSuffix) {
-          name = name + ' ' + nameSuffix;
-        }
-        
-        // 절대 위치 계산: 2열 × 9행 레이아웃
-        const labelIndex = i - start;
-        const row = Math.floor(labelIndex / 2); // 0부터 시작
-        const col = labelIndex % 2; // 0 또는 1
-        
-        // 좌표 계산 (mm 단위)
-        // 첫 번째 컬럼: left = 0mm
-        // 두 번째 컬럼: left = 100mm + 3mm = 103mm
-        const left = col === 0 ? '0mm' : '103mm';
-        // 각 행: top = row * 30mm
-        const top = (row * 30) + 'mm';
-        
-        // 주소와 상세주소를 합쳐서 출력
-        const fullAddress = address + (detailAddress ? ` ${detailAddress}` : '');
-        
-        html += `
-          <div class="label-item" style="left: ${left}; top: ${top};">
-            <div class="address">${fullAddress}</div>
-            <div class="name">${name}</div>
-            <div class="postal-code">${postalCode}</div>
-          </div>
-        `;
       }
-      const remaining = perPage - (end - start);
-      for (let k = 0; k < remaining && remaining < perPage; k++) {
-        const labelIndex = (end - start) + k;
-        const row = Math.floor(labelIndex / 2); // 0부터 시작
-        const col = labelIndex % 2; // 0 또는 1
-        
-        const left = col === 0 ? '0mm' : '103mm';
-        const top = (row * 30) + 'mm';
-        
-        html += `<div class="label-item empty" style="left: ${left}; top: ${top};"></div>`;
-      }
-      html += '</div>';
+
+      const sheet = document.createElement('div');
+      sheet.className = `${sheetClass} label-preview`;
+      sheet.innerHTML = sheetHtml;
+      labelSheetContainer.appendChild(sheet);
     }
 
-    labelSheet.innerHTML = html;
+    // 모달 표시 + 포커스/배경 비활성화(inert)
+    const modal = document.getElementById('labelModal');
+    const appContainer = document.querySelector('.container');
+    if (appContainer) appContainer.setAttribute('inert', '');
+    if (modal) {
+      lastFocusedElement = (document.activeElement && document.activeElement.focus) ? document.activeElement : null;
+      modal.classList.add('active');
+      modal.setAttribute('aria-hidden', 'false');
+      // 첫 포커스 대상
+      const first = document.getElementById('btnModalClose') || modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (first && first.focus) first.focus();
+      // 탭 포커스 트랩
+      modalKeydownHandler = (e) => {
+        if (e.key !== 'Tab') return;
+        const focusables = Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+          .filter(el => !el.hasAttribute('disabled') && el.offsetParent !== null);
+        if (focusables.length === 0) return;
+        const firstEl = focusables[0];
+        const lastEl = focusables[focusables.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === firstEl) {
+            e.preventDefault();
+            lastEl.focus();
+          }
+        } else {
+          if (document.activeElement === lastEl) {
+            e.preventDefault();
+            firstEl.focus();
+          }
+        }
+      };
+      modal.addEventListener('keydown', modalKeydownHandler);
+    }
     document.getElementById('labelPreview').classList.remove('hidden');
+  }
+
+  function printLabels() {
+    // 인쇄 시 PDF 기본 파일명은 문서 title을 따릅니다.
+    const originalTitle = document.title;
+    const template = document.getElementById('labelTemplate')?.value || '2x9';
+    const id = (typeof currentLabelJobId === 'string' && currentLabelJobId) 
+      ? currentLabelJobId 
+      : new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+    const nameSuffix = document.getElementById('nameSuffix')?.value || '';
+    const suffix = nameSuffix ? `_${nameSuffix}` : '';
+    const newTitle = `labels_${template}_${id}${suffix}`;
+
+    document.title = newTitle;
+
+    const restore = () => {
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', restore);
+      if (mql) mql.removeListener(beforeAfterHandler);
+    };
+
+    // 일부 브라우저 호환성: afterprint 이벤트 + matchMedia
+    window.addEventListener('afterprint', restore);
+    const mql = window.matchMedia && window.matchMedia('print');
+    const beforeAfterHandler = (e) => { if (!e.matches) restore(); };
+    if (mql && mql.addListener) mql.addListener(beforeAfterHandler);
+
+    window.print();
+
+    // Fallback: afterprint 미지원 브라우저 대비
+    setTimeout(restore, 2000);
+  }
+
+  function closeLabelModal() {
+    const modal = document.getElementById('labelModal');
+    const appContainer = document.querySelector('.container');
+    // 먼저 포커스를 모달 밖으로 이동
+    if (lastFocusedElement && document.contains(lastFocusedElement)) {
+      try { lastFocusedElement.focus(); } catch (_) {}
+    } else {
+      try { document.body.focus(); } catch (_) {}
+    }
+    if (modal) {
+      if (modalKeydownHandler) modal.removeEventListener('keydown', modalKeydownHandler);
+      modalKeydownHandler = null;
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    if (appContainer) appContainer.removeAttribute('inert');
   }
 
   async function downloadHwpx() {
@@ -711,69 +863,9 @@
     }
   }
 
-  async function downloadPDF() {
-    try {
-      // 라벨 페이지 존재 확인
-      const sheet = document.getElementById('labelSheet');
-      const pages = sheet ? sheet.querySelectorAll('.label-page') : null;
-      if (!pages || pages.length === 0) {
-        alert('먼저 라벨을 생성해 주세요.');
-        return;
-      }
-
-      // 동적 스크립트 로더
-      const loadScript = (src) => new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src;
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('스크립트 로드 실패: ' + src));
-        document.head.appendChild(s);
-      });
-
-      // 라이브러리 로드 (필요 시)
-      if (typeof window.html2canvas !== 'function') {
-        await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
-      }
-      if (!window.jspdf || typeof window.jspdf.jsPDF !== 'function') {
-        await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
-      }
-
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-
-      // 캡처 품질 설정
-      const scale = 2; // Retina 품질 향상
-      const opts = { scale, backgroundColor: '#ffffff' };
-
-      // 미리보기 스케일 제거 후 캡처 (원래대로 복구)
-      const originalTransform = sheet.style.transform;
-      sheet.style.transform = 'none';
-
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        // 화면에 보이도록 잠시 스크롤
-        page.scrollIntoView({ block: 'center' });
-        // 렌더링 대기
-        await new Promise(r => setTimeout(r, 50));
-
-        const canvas = await window.html2canvas(page, opts);
-        const imgData = canvas.toDataURL('image/png');
-        // A4 사이즈(mm)
-        const pageWidth = 210;
-        const pageHeight = 297;
-        if (i > 0) doc.addPage('a4', 'p');
-        doc.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
-      }
-
-      // 원복
-      sheet.style.transform = originalTransform;
-
-      const name = currentLabelJobId ? `labels_${currentLabelJobId}.pdf` : `labels_${Date.now()}.pdf`;
-      doc.save(name);
-    } catch (e) {
-      console.error('PDF 생성 실패:', e);
-      alert('PDF 생성 중 오류가 발생했습니다: ' + e.message);
-    }
+  function downloadPDF() {
+    // PDF 생성은 추후 구현
+    alert('PDF 다운로드 기능은 준비 중입니다.');
   }
 
   function resetLabelUI() {
@@ -790,9 +882,23 @@
     document.getElementById('labelPreview').classList.add('hidden');
     
     // 내용 초기화
-    document.getElementById('labelDataTable').innerHTML = '';
-    document.getElementById('labelFieldMapping').innerHTML = '';
-    document.getElementById('labelSheet').innerHTML = '';
+    const tbl = document.getElementById('labelDataTable');
+    const fmap = document.getElementById('labelFieldMapping');
+    const sheet = document.getElementById('labelSheet');
+    const modalSheet = document.getElementById('labelModalSheet');
+    if (tbl) tbl.innerHTML = '';
+    if (fmap) fmap.innerHTML = '';
+    if (sheet) sheet.innerHTML = '';
+    if (modalSheet) modalSheet.innerHTML = '';
+
+    // 모달 닫기
+    const modal = document.getElementById('labelModal');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    const appContainer = document.querySelector('.container');
+    if (appContainer) appContainer.removeAttribute('inert');
     
     // 진행 상황 초기화
     updateLabelProgress(0, '처리 중...');
@@ -800,6 +906,18 @@
 
   // Event wiring
   document.addEventListener('DOMContentLoaded', () => {
+    // (removed) overly aggressive CSS cleanup that could remove required styles
+    // API 바 초기화
+    const apiInput = document.getElementById('apiBaseInput');
+    if (apiInput) {
+      apiInput.value = API_BASE;
+    }
+    const btnSaveApi = document.getElementById('btnSaveApiBase');
+    if (btnSaveApi) btnSaveApi.addEventListener('click', saveApiBase);
+    const btnCheckApi = document.getElementById('btnCheckApi');
+    if (btnCheckApi) btnCheckApi.addEventListener('click', checkApiHealth);
+    // 자동 연결 확인
+    checkApiHealth();
     // Tabs
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -872,11 +990,28 @@
     // 라벨 생성 버튼
     document.getElementById('btnGenerateLabels').addEventListener('click', generateLabels);
     
-    // HWPX 다운로드 버튼
-    document.getElementById('btnDownloadHWPX').addEventListener('click', downloadHwpx);
+    // 라벨 인쇄 버튼 (기존 영역)
+    const btnPrint = document.getElementById('btnPrintLabels');
+    if (btnPrint) btnPrint.addEventListener('click', printLabels);
+    // 모달 버튼들
+    const btnModalPrint = document.getElementById('btnModalPrint');
+    if (btnModalPrint) btnModalPrint.addEventListener('click', printLabels);
+    const btnModalClose = document.getElementById('btnModalClose');
+    if (btnModalClose) btnModalClose.addEventListener('click', closeLabelModal);
+    const btnModalReset = document.getElementById('btnModalReset');
+    if (btnModalReset) btnModalReset.addEventListener('click', resetLabelUI);
+    const modalEl = document.getElementById('labelModal');
+    if (modalEl) {
+      modalEl.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'labelModal') closeLabelModal();
+      });
+    }
     
-    // PDF 다운로드 버튼
-    document.getElementById('btnDownloadPDF').addEventListener('click', downloadPDF);
+    // HWPX 다운로드 버튼
+    const btnHwpx = document.getElementById('btnDownloadHWPX');
+    if (btnHwpx) btnHwpx.addEventListener('click', downloadHwpx);
+    const btnPdf = document.getElementById('btnDownloadPDF');
+    if (btnPdf) btnPdf.addEventListener('click', downloadPDF);
     
     // 라벨 초기화 버튼
     document.getElementById('btnLabelReset').addEventListener('click', resetLabelUI);
