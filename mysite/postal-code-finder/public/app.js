@@ -107,7 +107,7 @@
     resultDiv.classList.add('hidden');
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
       const data = await response.json();
       if (data.success) {
         const jobId = data.data.jobId; currentLabelJobId = jobId; checkProgress(jobId);
