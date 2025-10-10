@@ -47,28 +47,6 @@
     window.location.reload();
   }
 
-  // Global: strip accidentally leaked CSS text from body (defensive)
-  function stripLeakedCssText(root) {
-    try {
-      const walker = document.createTreeWalker(root || document.body, NodeFilter.SHOW_TEXT, null);
-      const toRemove = [];
-      while (walker.nextNode()) {
-        const n = walker.currentNode;
-        const t = (n && n.textContent || '').trim();
-        if (!t) continue;
-        if (t.startsWith('/*') || t.includes('.field-mapping') || (t.includes('{') && t.includes('}'))) {
-          toRemove.push(n);
-        }
-      }
-      toRemove.forEach(n => { if (n && n.parentNode) n.parentNode.removeChild(n); });
-      document.querySelectorAll('pre,code,style').forEach(el => {
-        const txt = (el.textContent || '').toLowerCase();
-        if (txt.includes('.field-mapping') || txt.includes('라벨') || txt.includes('label') && txt.includes('field')) {
-          el.remove();
-        }
-      });
-    } catch (_) {}
-  }
 
   // 라벨 상태
   let labelData = null;
@@ -411,8 +389,7 @@
 
   // Wire events
   document.addEventListener('DOMContentLoaded', ()=>{
-    // Defensive cleanup once at load
-    stripLeakedCssText(document.body);
+    // (removed) overly aggressive CSS cleanup that could remove required styles
     const apiInput=document.getElementById('apiBaseInput'); if(apiInput) apiInput.value=API_BASE;
     const btnSaveApi=document.getElementById('btnSaveApiBase'); if(btnSaveApi) btnSaveApi.addEventListener('click', saveApiBase);
     const btnCheckApi=document.getElementById('btnCheckApi'); if(btnCheckApi) btnCheckApi.addEventListener('click', checkApiHealth);
