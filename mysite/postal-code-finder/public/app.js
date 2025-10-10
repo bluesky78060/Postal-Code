@@ -289,6 +289,18 @@
     const fields=[ {key:'name',label:'이름'}, {key:'address',label:'주소'}, {key:'detail',label:'상세주소'}, {key:'postalCode',label:'우편번호'} ];
     let html=''; fields.forEach(f=>{ html+=`<div class="field-mapping"><label>${f.label}:</label><select data-field="${f.key}"><option value="">선택 안함</option>${columns.map(col=>`<option value="${col}" ${col.toLowerCase().includes(f.key.toLowerCase())?'selected':''}>${col}</option>`).join('')}</select></div>`; });
     container.innerHTML=html;
+    // 안전장치: 잘못 삽입된 CSS 텍스트 노드 제거
+    try {
+      Array.from(container.childNodes).forEach(n => {
+        if (n.nodeType === Node.TEXT_NODE) {
+          const t = (n.textContent||'').trim();
+          if (t.startsWith('/*') || t.includes('.field-mapping')) {
+            container.removeChild(n);
+          }
+        }
+      });
+      container.querySelectorAll('pre,code,style').forEach(el => el.remove());
+    } catch(_) {}
     // 동의어 기반 자동 매핑 보강
     try {
       const synonyms = {
