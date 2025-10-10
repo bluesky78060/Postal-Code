@@ -132,6 +132,12 @@
     if (file.size > 10 * 1024 * 1024) { alert('파일 크기는 10MB 이하여야 합니다.'); return; }
 
     // 라벨 진행바 표시
+    // 다른 진행바/결과는 숨김 보장
+    const upProg = document.getElementById('uploadProgress');
+    const upRes = document.getElementById('uploadResult');
+    if (upProg) upProg.classList.add('hidden');
+    if (upRes) { upRes.classList.add('hidden'); upRes.innerHTML=''; }
+
     const prog = document.getElementById('labelUploadProgress');
     prog.classList.remove('hidden');
     updateLabelProgress(0, '파일 업로드 중...');
@@ -142,35 +148,21 @@
 
       // 응답 헤더 확인 (파일/JSON 분기)
       const contentType = response.headers.get('content-type') || '';
-      const contentDisposition = response.headers.get('content-disposition') || '';
-      const looksLikeFile = /attachment/i.test(contentDisposition) || /application\/(vnd\.openxmlformats-officedocument|octet-stream)/i.test(contentType);
-
       let data = null;
-      if (!looksLikeFile && /application\/json/i.test(contentType)) {
-        try { data = await response.clone().json(); } catch (_) { data = null; }
+      if (/application\/json/i.test(contentType)) {
+        try { data = await response.json(); } catch (_) { data = null; }
+      } else {
+        // 일부 환경에서 content-type이 잘못 설정될 수 있으므로 텍스트 후 JSON 재시도
+        try { const txt = await response.text(); data = JSON.parse(txt); } catch { data = null; }
       }
 
       if (data && data.success && data.data && data.data.jobId) {
         currentLabelJobId = data.data.jobId;
         updateLabelProgress(10, '파일 처리 중...');
         await waitForLabelProcessingLabel(currentLabelJobId);
-      } else if (looksLikeFile) {
-        // 서버가 즉시 결과 파일을 반환하는 구성 (Vercel 서버리스 등)
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `labels_result_${Date.now()}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        updateLabelProgress(100, '다운로드 완료');
-        prog.classList.add('hidden');
-        alert('서버가 즉시 결과 파일을 반환했습니다. 라벨 미리보기는 로컬 서버 구성에서 지원됩니다.');
       } else {
         prog.classList.add('hidden');
-        alert('파일 업로드 실패: 서버 응답 형식이 올바르지 않습니다.');
+        alert('라벨 업로드 실패: 서버가 라벨 모드(JSON) 응답을 반환하지 않았습니다. 관리자에게 문의해 주세요.');
       }
     } catch (e) {
       prog.classList.add('hidden');
