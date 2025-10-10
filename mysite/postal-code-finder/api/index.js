@@ -406,7 +406,7 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       console.log(`Processing: ${limitedRows.length} rows (limited to 200)`);
 
       // Label mode: register job and return JSON (no download)
-      const mode = (req.query.mode || '').toLowerCase();
+      const mode = String((req.query.mode || req.headers['x-label-mode'] || '')).toLowerCase();
       if (mode === 'label') {
         global.excelJobs[jobId] = {
           headers,
