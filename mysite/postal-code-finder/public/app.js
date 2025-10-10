@@ -1,54 +1,67 @@
 (() => {
-  // API 엔드포인트 자동 결정: window.API_BASE > localStorage.API_BASE > 동일 오리진('/api') > localhost:3001
+  // API 엔드포인트 자동 결정: window.API_BASE > 동일 오리진('/api') > localhost:3001
   const API_BASE = (() => {
     try {
+      // 수동 오버라이드 (전역 또는 localStorage)
       if (window.API_BASE) return window.API_BASE.replace(/\/$/, '');
       const stored = window.localStorage && window.localStorage.getItem('API_BASE');
       if (stored) return stored.replace(/\/$/, '');
+      // 동일 오리진 우선 (http/https인 경우에만)
       if (window.location && window.location.origin) {
         const proto = String(window.location.protocol || '').toLowerCase();
-        if (proto.startsWith('http')) return `${window.location.origin}/api`;
+        if (proto.startsWith('http')) {
+          return `${window.location.origin}/api`;
+        }
       }
     } catch (_) {}
+    // 최후 수단: 로컬 기본값
     return 'http://localhost:3001/api';
   })();
   if (String(window.location.protocol).toLowerCase().startsWith('file')) {
-    console.warn('[App] file:// 로 열렸습니다. localStorage.API_BASE를 설정하세요. 예) localStorage.setItem(\'API_BASE\', \'http://localhost:3005/api\')');
+    console.warn('[App] file:// 로 열렸습니다. API 서버 주소를 localStorage.API_BASE에 설정하세요. 예) localStorage.setItem(\'API_BASE\', \'http://localhost:3005/api\')');
   }
   console.log('[App] Using API_BASE:', API_BASE);
 
-  // API 상태 표시
+  // API 연결 상태 표시
   async function checkApiHealth() {
     const statusEl = document.getElementById('apiStatus');
     const dot = statusEl?.querySelector('.api-dot');
     const text = document.getElementById('apiStatusText');
     if (dot) { dot.classList.remove('ok', 'fail'); }
     if (text) { text.textContent = '확인 중...'; }
+
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 5000);
       const res = await fetch(`${API_BASE}/health`, { signal: ctrl.signal });
       clearTimeout(t);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json().catch(() => ({}));
       if (dot) dot.classList.add('ok');
       if (text) text.textContent = `연결됨 (${new URL(API_BASE).origin})`;
-      return true;
+      return data;
     } catch (e) {
       if (dot) dot.classList.add('fail');
       if (text) text.textContent = `연결 실패: ${e.message}`;
-      return false;
+      return null;
     }
   }
+
   function saveApiBase() {
     const input = document.getElementById('apiBaseInput');
     const val = (input?.value || '').trim();
-    if (!val) { window.localStorage.removeItem('API_BASE'); }
-    else { window.localStorage.setItem('API_BASE', val); }
+    if (!val) {
+      window.localStorage.removeItem('API_BASE');
+      alert('API 주소가 비어 있어 기본 규칙으로 복원합니다.');
+    } else {
+      window.localStorage.setItem('API_BASE', val);
+      alert(`API 주소를 저장했습니다:\n${val}\n페이지를 새로고침합니다.`);
+    }
     window.location.reload();
   }
 
-
-  // 라벨 상태
+  
+  // 라벨 관련 전역 변수
   let labelData = null;
   let fieldMappings = {};
   let currentLabelJobId = null;
@@ -61,11 +74,12 @@
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     if (clickedButton) clickedButton.classList.add('active');
     document.getElementById(tabName).classList.add('active');
+    // 탭 전환 시 진행 표시/결과 충돌 방지
     if (tabName === 'label') {
       const upProg = document.getElementById('uploadProgress');
       const upRes = document.getElementById('uploadResult');
       if (upProg) upProg.classList.add('hidden');
-      if (upRes) { upRes.classList.add('hidden'); upRes.innerHTML=''; }
+      if (upRes) { upRes.classList.add('hidden'); upRes.innerHTML = ''; }
     } else if (tabName === 'upload') {
       const lp = document.getElementById('labelUploadProgress');
       const ldp = document.getElementById('labelDataPreview');
@@ -76,223 +90,537 @@
     }
   }
 
+  async function searchAddress() {
+    const address = document.getElementById('address').value.trim();
+    const resultDiv = document.getElementById('searchResult');
+
+    if (!address) {
+      showResult(resultDiv, '주소를 입력해주세요.', 'error');
+      return;
+    }
+    if (address.length < 2) {
+      showResult(resultDiv, '주소는 2자 이상 입력해주세요.', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/address/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        const result = data.data;
+        showResult(resultDiv, `
+          <h3>✅ 우편번호를 찾았습니다!</h3>
+          <p><strong>우편번호:</strong> ${result.postalCode}</p>
+          <p><strong>전체 주소:</strong> ${result.fullAddress}</p>
+          <p><strong>시/도:</strong> ${result.sido}</p>
+          <p><strong>시/군/구:</strong> ${result.sigungu}</p>
+          <div style="margin-top:12px">
+            <button class="btn" data-reset-search>↩️ 초기화</button>
+          </div>
+        `, 'success');
+      } else {
+        const errorMsg = data.error || '알 수 없는 오류가 발생했습니다.';
+        showResult(resultDiv, `
+          ❌ ${errorMsg}
+          <div style="margin-top:12px">
+            <button class="btn" data-reset-search>↩️ 초기화</button>
+          </div>
+        `, 'error');
+        if (data.validationErrors && data.validationErrors.length > 0) {
+          const details = data.validationErrors.map(err => err.message).join('<br>');
+          showResult(resultDiv, `
+            ❌ ${errorMsg}<br><small>${details}</small>
+            <div style=\"margin-top:12px\">
+              <button class=\"btn\" data-reset-search>↩️ 초기화</button>
+            </div>
+          `, 'error');
+        }
+      }
+    } catch (error) {
+      showResult(resultDiv, `
+        ❌ 서버 연결 오류: ${error.message}
+        <div style="margin-top:12px">
+          <button class="btn" data-reset-search>↩️ 초기화</button>
+        </div>
+      `, 'error');
+    }
+  }
+
+  function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) uploadFile(file);
+  }
+
+  async function uploadFile(file) {
+    const progressDiv = document.getElementById('uploadProgress');
+    const resultDiv = document.getElementById('uploadResult');
+
+    if (!file.name.match(/\.(xls|xlsx)$/i)) {
+      showResult(resultDiv, '❌ 엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showResult(resultDiv, '❌ 파일 크기는 10MB 이하여야 합니다.', 'error');
+      return;
+    }
+
+    progressDiv.classList.remove('hidden');
+    resultDiv.classList.add('hidden');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      const data = await response.json();
+      if (data.success) {
+        const jobId = data.data.jobId;
+        checkProgress(jobId);
+      } else {
+        progressDiv.classList.add('hidden');
+        showResult(resultDiv, `
+          ❌ ${data.error}
+          <div style="margin-top:12px">
+            <button class="btn" data-reset-upload>↩️ 초기화</button>
+          </div>
+        `, 'error');
+      }
+    } catch (error) {
+      progressDiv.classList.add('hidden');
+      showResult(resultDiv, `
+        ❌ 업로드 중 오류가 발생했습니다.
+        <div style="margin-top:12px">
+          <button class="btn" data-reset-upload>↩️ 초기화</button>
+        </div>
+      `, 'error');
+    }
+  }
+
+  async function checkProgress(jobId) {
+    try {
+      const response = await fetch(`${API_BASE}/file/status/${jobId}`);
+      const data = await response.json();
+      if (data.success) {
+        const status = data.data;
+        updateProgress(status.progress, `처리 중... (${status.processed}/${status.total})`);
+        if (status.status === 'completed') {
+          document.getElementById('uploadProgress').classList.add('hidden');
+          showResult(document.getElementById('uploadResult'), `
+            <h3>✅ 파일 처리가 완료되었습니다!</h3>
+            <p><strong>처리된 행:</strong> ${status.processed}개</p>
+            <p><strong>오류 행:</strong> ${status.errors?.length || 0}개</p>
+            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn" data-download-id="${jobId}">📥 다운로드</button>
+              <button class="btn" data-reset-upload>↩️ 초기화</button>
+            </div>
+          `, 'success');
+        } else if (status.status === 'error') {
+          document.getElementById('uploadProgress').classList.add('hidden');
+          showResult(document.getElementById('uploadResult'), `
+            ❌ ${status.error}
+            <div style="margin-top:12px">
+              <button class="btn" data-reset-upload>↩️ 초기화</button>
+            </div>
+          `, 'error');
+        } else {
+          setTimeout(() => checkProgress(jobId), 2000);
+        }
+      }
+    } catch (error) {
+      document.getElementById('uploadProgress').classList.add('hidden');
+      showResult(document.getElementById('uploadResult'), `
+        ❌ 상태 확인 중 오류가 발생했습니다.
+        <div style="margin-top:12px">
+          <button class="btn" data-reset-upload>↩️ 초기화</button>
+        </div>
+      `, 'error');
+    }
+  }
+
+  function updateProgress(percent, text) {
+    document.getElementById('progressFill').style.width = percent + '%';
+    document.getElementById('progressText').textContent = text;
+  }
+
+  function downloadFile(jobId) {
+    window.open(`${API_BASE}/file/download/${jobId}`, '_blank');
+  }
+
+  function resetSearchUI() {
+    const input = document.getElementById('address');
+    if (input) input.value = '';
+    const resultDiv = document.getElementById('searchResult');
+    resultDiv.classList.add('hidden');
+    resultDiv.innerHTML = '';
+    input && input.focus();
+  }
+
+  function resetUploadUI() {
+    // Reset file input
+    const fileInput = document.getElementById('file');
+    if (fileInput) fileInput.value = '';
+    // Hide progress
+    const progressDiv = document.getElementById('uploadProgress');
+    progressDiv.classList.add('hidden');
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressText').textContent = '처리 중...';
+    // Hide result
+    const resultDiv = document.getElementById('uploadResult');
+    resultDiv.classList.add('hidden');
+    resultDiv.innerHTML = '';
+  }
+
   function showResult(element, html, type) {
     element.innerHTML = html;
     element.className = `result ${type}`;
     element.classList.remove('hidden');
   }
 
-  async function searchAddress() {
-    const address = document.getElementById('address').value.trim();
-    const resultDiv = document.getElementById('searchResult');
-    if (!address) { showResult(resultDiv, '주소를 입력해주세요.', 'error'); return; }
-    if (address.length < 2) { showResult(resultDiv, '주소는 2자 이상 입력해주세요.', 'error'); return; }
-    try {
-      const response = await fetch(`${API_BASE}/address/search`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address }) });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        const r = data.data;
-        showResult(resultDiv, `
-          <h3>✅ 우편번호를 찾았습니다!</h3>
-          <p><strong>우편번호:</strong> ${r.postalCode}</p>
-          <p><strong>전체 주소:</strong> ${r.fullAddress}</p>
-          <p><strong>시/도:</strong> ${r.sido}</p>
-          <p><strong>시/군/구:</strong> ${r.sigungu}</p>
-          <div style="margin-top:12px"><button class="btn" data-reset-search>↩️ 초기화</button></div>
-        `, 'success');
-      } else {
-        const msg = data.error || '알 수 없는 오류가 발생했습니다.';
-        showResult(resultDiv, `❌ ${msg}<div style="margin-top:12px"><button class="btn" data-reset-search>↩️ 초기화</button></div>`, 'error');
-      }
-    } catch (e) {
-      showResult(resultDiv, `❌ 서버 연결 오류: ${e.message}<div style="margin-top:12px"><button class="btn" data-reset-search>↩️ 초기화</button></div>`, 'error');
-    }
+  // 라벨 관련 함수들
+  function handleLabelFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) processLabelFile(file);
   }
 
-  function handleFileSelect(e) { const f = e.target.files[0]; if (f) uploadFile(f); }
-  function handleLabelFileSelect(e) { const f = e.target.files[0]; if (f) uploadLabelFile(f); }
-
-  async function uploadFile(file) {
-    const progressDiv = document.getElementById('uploadProgress');
-    const resultDiv = document.getElementById('uploadResult');
-    if (!file.name.match(/\.(xls|xlsx)$/i)) { showResult(resultDiv, '❌ 엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.', 'error'); return; }
-    if (file.size > 10 * 1024 * 1024) { showResult(resultDiv, '❌ 파일 크기는 10MB 이하여야 합니다.', 'error'); return; }
-    progressDiv.classList.remove('hidden');
-    resultDiv.classList.add('hidden');
-    const formData = new FormData(); formData.append('file', file);
-    try {
-      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      const data = await response.json();
-      if (data.success) {
-        const jobId = data.data.jobId; currentLabelJobId = jobId; checkProgress(jobId);
-      } else {
-        progressDiv.classList.add('hidden');
-        showResult(resultDiv, `❌ ${data.error}<div style="margin-top:12px"><button class="btn" data-reset-upload>↩️ 초기화</button></div>`, 'error');
-      }
-    } catch (e) {
-      progressDiv.classList.add('hidden');
-      showResult(resultDiv, `❌ 업로드 중 오류가 발생했습니다.<div style="margin-top:12px"><button class="btn" data-reset-upload>↩️ 초기화</button></div>`, 'error');
+  async function processLabelFile(file) {
+    if (!file.name.match(/\.(xls|xlsx)$/i)) {
+      alert('엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.');
+      return;
     }
-  }
 
-  // 라벨 업로드 전용 흐름 (라벨 탭의 진행률/미리보기 UI를 사용)
-  async function uploadLabelFile(file) {
-    // 확장자/크기 검사
-    if (!file.name.match(/\.(xls|xlsx)$/i)) { alert('엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.'); return; }
-    if (file.size > 10 * 1024 * 1024) { alert('파일 크기는 10MB 이하여야 합니다.'); return; }
-
-    // 라벨 진행바 표시
-    // 다른 진행바/결과는 숨김 보장
-    const upProg = document.getElementById('uploadProgress');
-    const upRes = document.getElementById('uploadResult');
-    if (upProg) upProg.classList.add('hidden');
-    if (upRes) { upRes.classList.add('hidden'); upRes.innerHTML=''; }
-
-    const prog = document.getElementById('labelUploadProgress');
-    prog.classList.remove('hidden');
+    console.log('파일 처리 시작:', file.name);
+    
+    // 진행 상황 표시
+    document.getElementById('labelUploadProgress').classList.remove('hidden');
     updateLabelProgress(0, '파일 업로드 중...');
 
     try {
-      const formData = new FormData(); formData.append('file', file);
-      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { 
-        method: 'POST', 
-        headers: { 'x-label-mode': '1', 'Accept': 'application/json' },
-        body: formData 
-      });
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // 응답 헤더 확인 (파일/JSON 분기)
-      const contentType = response.headers.get('content-type') || '';
-      let data = null;
-      if (/application\/json/i.test(contentType)) {
-        try { data = await response.json(); } catch (_) { data = null; }
-      } else {
-        // 일부 환경에서 content-type이 잘못 설정될 수 있으므로 텍스트 후 JSON 재시도
-        try { const txt = await response.text(); data = JSON.parse(txt); } catch { data = null; }
-      }
-
-      if (data && data.success && data.data && data.data.jobId) {
-        currentLabelJobId = data.data.jobId;
+      console.log('API 호출:', `${API_BASE}/file/upload`);
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      const data = await response.json();
+      
+      console.log('서버 응답:', data);
+      
+      if (data.success) {
+        const jobId = data.data.jobId;
+        currentLabelJobId = jobId;
+        console.log('JobID:', jobId);
         updateLabelProgress(10, '파일 처리 중...');
-        await waitForLabelProcessingLabel(currentLabelJobId);
+        await waitForLabelProcessing(jobId);
       } else {
-        prog.classList.add('hidden');
-        alert('라벨 업로드 실패: 서버가 라벨 모드(JSON) 응답을 반환하지 않았습니다. 관리자에게 문의해 주세요.');
+        document.getElementById('labelUploadProgress').classList.add('hidden');
+        alert('파일 업로드 실패: ' + data.error);
       }
-    } catch (e) {
-      prog.classList.add('hidden');
-      alert('라벨 파일 처리 중 오류가 발생했습니다: ' + e.message);
+    } catch (error) {
+      console.error('파일 처리 오류:', error);
+      document.getElementById('labelUploadProgress').classList.add('hidden');
+      alert('파일 처리 중 오류가 발생했습니다: ' + error.message);
+      
+      // 오류 발생 시 샘플 데이터로 대체
+      console.log('샘플 데이터로 대체');
+      labelData = generateSampleData();
+      showLabelDataPreview();
     }
   }
 
-  async function waitForLabelProcessingLabel(jobId){
+  async function waitForLabelProcessing(jobId) {
     try {
-      const res = await fetch(`${API_BASE}/file/status/${jobId}`);
-      const data = await res.json();
-      if (data.success){
-        const st = data.data;
-        updateLabelProgress(st.progress, `처리 중... (${st.processed}/${st.total})`);
-        if (st.status === 'completed'){
+      const response = await fetch(`${API_BASE}/file/status/${jobId}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        const status = data.data;
+        updateLabelProgress(status.progress, `처리 중... (${status.processed}/${status.total})`);
+        
+        if (status.status === 'completed') {
           updateLabelProgress(100, '처리 완료!');
           document.getElementById('labelUploadProgress').classList.add('hidden');
+          // 처리된 파일에서 데이터 추출
           await loadLabelData(jobId);
-        } else if (st.status === 'processing'){
-          setTimeout(()=>waitForLabelProcessingLabel(jobId), 1200);
+        } else if (status.status === 'processing') {
+          setTimeout(() => waitForLabelProcessing(jobId), 2000);
         } else {
           document.getElementById('labelUploadProgress').classList.add('hidden');
-          alert('파일 처리 실패: ' + (st.error || ''));
+          alert('파일 처리 실패: ' + status.error);
         }
       }
-    } catch (e){
+    } catch (error) {
       document.getElementById('labelUploadProgress').classList.add('hidden');
-      alert('상태 확인 중 오류: ' + e.message);
+      alert('상태 확인 중 오류: ' + error.message);
     }
   }
 
-  async function checkProgress(jobId) {
+  function updateLabelProgress(percent, text) {
+    document.getElementById('labelProgressFill').style.width = percent + '%';
+    document.getElementById('labelProgressText').textContent = text;
+  }
+
+  async function loadLabelData(jobId) {
     try {
-      const res = await fetch(`${API_BASE}/file/status/${jobId}`);
-      const data = await res.json();
+      console.log('라벨 데이터 로드 시작:', jobId);
+      // 새로운 label-data API 엔드포인트 사용
+      const response = await fetch(`${API_BASE}/file/label-data/${jobId}`);
+      const data = await response.json();
+      
       if (data.success) {
-        const st = data.data; updateProgress(st.progress, `처리 중... (${st.processed}/${st.total})`);
-        if (st.status === 'completed') {
-          document.getElementById('uploadProgress').classList.add('hidden');
-          showResult(document.getElementById('uploadResult'), `
-            <h3>✅ 파일 처리가 완료되었습니다!</h3>
-            <p><strong>처리된 행:</strong> ${st.processed}개</p>
-            <p><strong>오류 행:</strong> ${st.errors?.length || 0}개</p>
-            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn" data-reset-upload>↩️ 초기화</button>
-            </div>
-          `, 'success');
-        } else if (st.status === 'error') {
-          document.getElementById('uploadProgress').classList.add('hidden');
-          showResult(document.getElementById('uploadResult'), `❌ ${st.error}<div style="margin-top:12px"><button class="btn" data-reset-upload>↩️ 초기화</button></div>`, 'error');
-        } else { setTimeout(()=>checkProgress(jobId), 2000); }
+        console.log('라벨 데이터 로드 성공:', data.data);
+        labelData = {
+          headers: data.data.headers,
+          rows: data.data.rows
+        };
+        showLabelDataPreview();
+      } else {
+        throw new Error(data.error || '데이터 로드 실패');
       }
-    } catch (e) {
-      document.getElementById('uploadProgress').classList.add('hidden');
-      showResult(document.getElementById('uploadResult'), `❌ 상태 확인 중 오류가 발생했습니다.<div style="margin-top:12px"><button class="btn" data-reset-upload>↩️ 초기화</button></div>`, 'error');
+    } catch (error) {
+      console.error('데이터 로드 실패:', error);
+      alert('실제 데이터 로드에 실패했습니다. 샘플 데이터를 사용합니다.');
+      // 오류 시 샘플 데이터 사용
+      labelData = generateSampleData();
+      showLabelDataPreview();
     }
   }
-  function updateProgress(p, t){ document.getElementById('progressFill').style.width = p + '%'; document.getElementById('progressText').textContent = t; }
 
-  // 라벨 데이터 로딩/미리보기
-  async function loadLabelData(jobId){
-    try {
-      const res = await fetch(`${API_BASE}/file/label-data/${jobId}`);
-      const data = await res.json();
-      if (data.success){ labelData = { headers: data.data.headers, rows: data.data.rows }; showLabelDataPreview(); }
-      else throw new Error(data.error || '데이터 로드 실패');
-    } catch (e){ alert('데이터 로드 실패: ' + e.message); }
+  function generateSampleData() {
+    return [
+      { name: '홍길동', address: '서울특별시 강남구 테헤란로 123', postalCode: '06158' },
+      { name: '김영희', address: '서울특별시 서초구 반포대로 45', postalCode: '06543' },
+      { name: '이철수', address: '경기도 성남시 분당구 정자로 67', postalCode: '13561' },
+      { name: '박민수', address: '인천광역시 연수구 송도과학로 89', postalCode: '21984' },
+      { name: '정수진', address: '부산광역시 해운대구 우동 123-45', postalCode: '48058' },
+      { name: '최지혜', address: '대구광역시 수성구 달구벌대로 678', postalCode: '42192' },
+      { name: '한상호', address: '대전광역시 유성구 대학로 234', postalCode: '34141' },
+      { name: '윤미경', address: '광주광역시 서구 상무대로 567', postalCode: '61949' },
+      { name: '장동건', address: '울산광역시 남구 삼산로 890', postalCode: '44776' },
+      { name: '송혜교', address: '세종특별자치시 한누리대로 123', postalCode: '30103' },
+      { name: '강호동', address: '강원도 춘천시 중앙로 456', postalCode: '24341' },
+      { name: '유재석', address: '충청북도 청주시 상당구 대성로 789', postalCode: '28644' },
+      { name: '신동엽', address: '충청남도 천안시 동남구 병천면 123', postalCode: '31225' },
+      { name: '김용만', address: '전라북도 전주시 완산구 효자동 456-78', postalCode: '54896' },
+      { name: '조세호', address: '전라남도 목포시 용당로 234', postalCode: '58746' },
+      { name: '김구라', address: '경상북도 대구시 중구 국채보상로 567', postalCode: '41911' },
+      { name: '허경환', address: '경상남도 창원시 마산합포구 3·15대로 890', postalCode: '51329' },
+      { name: '김영철', address: '제주특별자치도 제주시 연동 123-45', postalCode: '63212' }
+    ];
   }
 
-  function generateSampleData(){ return [
-    { name: '홍길동', address: '서울특별시 강남구 테헤란로 123', detail: '101동 202호', postalCode: '06158' },
-    { name: '김영희', address: '서울특별시 서초구 반포대로 45', detail: '301동 1203호', postalCode: '06543' }
-  ]; }
+  function showLabelDataPreview() {
+    if (!labelData) {
+      alert('데이터가 없습니다.');
+      return;
+    }
 
-  function showLabelDataPreview(){
-    if (!labelData){ alert('데이터가 없습니다.'); return; }
-    let displayData, columns;
-    if (Array.isArray(labelData)){ if (labelData.length===0){ alert('데이터가 없습니다.'); return; } displayData = labelData; columns = Object.keys(labelData[0]); }
-    else if (labelData.headers && labelData.rows){ if (labelData.rows.length===0){ alert('데이터가 없습니다.'); return; } displayData = labelData.rows; columns = labelData.headers; }
-    else { alert('잘못된 데이터 형식입니다.'); return; }
+    // 데이터 형식 확인 및 정규화
+    let displayData;
+    let columns;
+    
+    if (Array.isArray(labelData)) {
+      // 기존 배열 형식 (샘플 데이터)
+      if (labelData.length === 0) {
+        alert('데이터가 없습니다.');
+        return;
+      }
+      displayData = labelData;
+      columns = Object.keys(labelData[0]);
+    } else if (labelData.headers && labelData.rows) {
+      // 새로운 형식 (API 응답)
+      if (labelData.rows.length === 0) {
+        alert('데이터가 없습니다.');
+        return;
+      }
+      displayData = labelData.rows;
+      columns = labelData.headers;
+    } else {
+      alert('잘못된 데이터 형식입니다.');
+      return;
+    }
+
+    // 미리보기용 컬럼 중복 정리 (우편번호/도로명주소 등 동의어/중복값 제거)
     const previewColumns = dedupePreviewColumns(columns, displayData);
-    document.getElementById('labelDataTable').innerHTML = createDataTable(displayData, previewColumns);
+
+    // 데이터 테이블 생성
+    const tableHtml = createDataTable(displayData, previewColumns);
+    document.getElementById('labelDataTable').innerHTML = tableHtml;
+
+    // 필드 매핑 UI 생성
     createFieldMappings(previewColumns);
+
+    // 미리보기 영역 표시
     document.getElementById('labelDataPreview').classList.remove('hidden');
   }
 
-  function dedupePreviewColumns(columns, data){
-    if (!Array.isArray(columns) || columns.length===0) return columns||[];
-    const lower = s=>String(s||'').toLowerCase(); const norm = s=>lower(s).replace(/[\s_]/g,'');
-    const groups = { postal: ['우편번호','postalcode','postal_code','postcode','zip','zipcode'], address: ['도로명주소','address','fulladdress','전체주소','주소'], name: ['성명','이름','name'] };
-    const inGroup = (c, ks)=> ks.includes(norm(c));
-    const sameValues=(a,b)=>{ for(let i=0;i<Math.min(10,data.length);i++){ const row=data[i]; const va=(typeof row==='object'&&!Array.isArray(row))?row[a]:row[columns.indexOf(a)]; const vb=(typeof row==='object'&&!Array.isArray(row))?row[b]:row[columns.indexOf(b)]; if((va||'')!==(vb||'')) return false; } return true; };
-    const preferOrder={ name:['성명','이름','name'], address:['도로명주소','address','fullAddress','전체주소','주소'], postal:['우편번호','postalCode','postal_code','postcode','zip','zipcode'] };
-    const chosen=new Set(); let keptName=null, keptAddress=null, keptPostal=null;
-    { const cands=columns.filter(c=>inGroup(c,groups.name)); if(cands.length){ const ordered=preferOrder.name.map(k=>cands.find(c=>norm(c)===norm(k))).filter(Boolean).concat(cands.filter(c=>!preferOrder.name.some(k=>norm(k)===norm(c)))); keptName=ordered[0]||cands[0]; if(keptName) chosen.add(keptName);} }
-    ['address','postal'].forEach(g=>{ const cands=columns.filter(c=>inGroup(c,groups[g])); if(cands.length===0) return; let kept=null; const ordered=preferOrder[g].map(k=>cands.find(c=>norm(c)===norm(k))).filter(Boolean).concat(cands.filter(c=>!preferOrder[g].some(k=>norm(k)===norm(c)))); for(const col of ordered){ if(!kept){ kept=col; continue;} if(!sameValues(kept,col)){ continue; } } if(kept){ if(g==='address') keptAddress=kept; else keptPostal=kept; chosen.add(kept);} });
-    const out=[]; if(keptName) out.push(keptName); if(keptAddress) out.push(keptAddress); if(keptPostal) out.push(keptPostal);
-    columns.forEach(c=>{ if(out.includes(c)) return; if(inGroup(c,groups.address)) return; if(inGroup(c,groups.postal)) return; out.push(c); });
-    return out.length?out:columns;
+  // 미리보기 전용: 동의어/중복 값 컬럼 제거
+  function dedupePreviewColumns(columns, data) {
+    if (!Array.isArray(columns) || columns.length === 0) return columns || [];
+
+    const lower = (s) => String(s || '').toLowerCase();
+    const norm = (s) => lower(s).replace(/[\s_]/g, '');
+
+    const groups = {
+      postal: ['우편번호', 'postalcode', 'postal_code', 'postcode', 'zip', 'zipcode'],
+      address: ['도로명주소', 'address', 'fulladdress', '전체주소', '주소'],
+      name: ['성명', '이름', 'name']
+    };
+
+    const inGroup = (col, keys) => keys.includes(norm(col));
+
+    // 중복 값 판정: 앞쪽 몇 행 비교로 동일 값이면 중복으로 간주
+    const sameValues = (a, b) => {
+      for (let i = 0; i < Math.min(10, data.length); i++) {
+        const row = data[i];
+        const va = (typeof row === 'object' && !Array.isArray(row)) ? row[a] : row[columns.indexOf(a)];
+        const vb = (typeof row === 'object' && !Array.isArray(row)) ? row[b] : row[columns.indexOf(b)];
+        if ((va || '') !== (vb || '')) return false;
+      }
+      return true;
+    };
+
+    // 우선순위: address는 '도로명주소'를 선호, postal은 '우편번호' 또는 'postalCode'를 선호
+    const preferOrder = {
+      name: ['성명', '이름', 'name'],
+      address: ['도로명주소', 'address', 'fullAddress', '전체주소', '주소'],
+      postal: ['우편번호', 'postalCode', 'postal_code', 'postcode', 'zip', 'zipcode']
+    };
+
+    const chosen = new Set();
+    let keptName = null;
+    let keptAddress = null;
+    let keptPostal = null;
+
+    // 먼저 address/postal 그룹 처리
+    // 이름 우선 선택(있으면)
+    {
+      const candidates = columns.filter(c => inGroup(c, groups.name));
+      if (candidates.length) {
+        const ordered = preferOrder.name
+          .map(k => candidates.find(c => norm(c) === norm(k)))
+          .filter(Boolean)
+          .concat(candidates.filter(c => !preferOrder.name.some(k => norm(k) === norm(c))));
+        keptName = ordered[0] || candidates[0];
+        if (keptName) chosen.add(keptName);
+      }
+    }
+
+    ['address', 'postal'].forEach((g) => {
+      const candidates = columns.filter(c => inGroup(c, groups[g]));
+      if (candidates.length === 0) return;
+      // 동일 값 중복 제거
+      let kept = null;
+      // 우선순위에 따라 보관할 후보 선택
+      const ordered = preferOrder[g]
+        .map(k => candidates.find(c => norm(c) === norm(k)))
+        .filter(Boolean)
+        .concat(candidates.filter(c => !preferOrder[g].some(k => norm(k) === norm(c))));
+      for (const col of ordered) {
+        if (!kept) { kept = col; continue; }
+        if (!sameValues(kept, col)) {
+          // 값이 다르면 보조 컬럼으로 허용 (단, 미리보기에서는 하나만 보여주고, 매핑 선택에는 포함시키기 위해 result에 넣지 않음)
+          continue;
+        }
+      }
+      if (kept) {
+        if (g === 'address') keptAddress = kept; else keptPostal = kept;
+        chosen.add(kept);
+      }
+    });
+
+    // 원하는 미리보기 순서: 성명 → 도로명주소 → 우편번호 → 나머지
+    const orderedOut = [];
+    if (keptName) orderedOut.push(keptName);
+    if (keptAddress) orderedOut.push(keptAddress);
+    if (keptPostal) orderedOut.push(keptPostal);
+
+    columns.forEach((c) => {
+      if (orderedOut.includes(c)) return;
+      // address/postal 그룹의 중복 후보는 미리보기에서는 제외
+      if (inGroup(c, groups.address)) return;
+      if (inGroup(c, groups.postal)) return;
+      orderedOut.push(c);
+    });
+
+    return orderedOut.length ? orderedOut : columns;
   }
 
-  function createDataTable(data, columns){ if(!data||data.length===0) return '<p>데이터가 없습니다.</p>';
-    if(!columns&&data[0]) columns=Object.keys(data[0]);
-    let html='<table style="width: 100%; border-collapse: collapse;">'; html+='<thead><tr>';
-    columns.forEach(col=>{ html+=`<th style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5;">${col}</th>`; });
-    html+='</tr></thead><tbody>'; data.slice(0,5).forEach(row=>{ html+='<tr>'; columns.forEach((col,idx)=>{ const v=(typeof row==='object'&&!Array.isArray(row))?row[col]:row[idx]; html+=`<td style=\"border: 1px solid #ddd; padding: 8px;\">${v||''}</td>`; }); html+='</tr>'; }); html+='</tbody></table>';
-    if(data.length>5) html+=`<p style="margin-top: 10px; color: #666;">총 ${data.length}개 행 (5개만 표시)</p>`; return html; }
+  function createDataTable(data, columns) {
+    if (!data || data.length === 0) return '<p>데이터가 없습니다.</p>';
 
-  function createFieldMappings(columns){
-    const container=document.getElementById('labelFieldMapping');
-    const fields=[ {key:'name',label:'이름'}, {key:'address',label:'주소'}, {key:'detail',label:'상세주소'}, {key:'postalCode',label:'우편번호'} ];
+    // columns 매개변수가 없으면 첫 번째 객체의 키를 사용 (기존 동작)
+    if (!columns && data[0]) {
+      columns = Object.keys(data[0]);
+    }
+    
+    let html = '<table style="width: 100%; border-collapse: collapse;">';
+    
+    // 헤더
+    html += '<thead><tr>';
+    columns.forEach(col => {
+      html += `<th style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5;">${col}</th>`;
+    });
+    html += '</tr></thead>';
+    
+    // 데이터 (최대 5행만 표시)
+    html += '<tbody>';
+    data.slice(0, 5).forEach(row => {
+      html += '<tr>';
+      columns.forEach((col, index) => {
+        // 객체 형태면 키로 접근, 배열 형태면 인덱스로 접근
+        const value = typeof row === 'object' && !Array.isArray(row) ? row[col] : row[index];
+        html += `<td style="border: 1px solid #ddd; padding: 8px;">${value || ''}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    if (data.length > 5) {
+      html += `<p style="margin-top: 10px; color: #666;">총 ${data.length}개 행 (5개만 표시)</p>`;
+    }
+    
+    return html;
+  }
+
+  function createFieldMappings(columns) {
+    const container = document.getElementById('labelFieldMapping');
+    const fields = [
+      { key: 'name', label: '이름' },
+      { key: 'address', label: '주소' },
+      { key: 'detail', label: '상세주소' },
+      { key: 'postalCode', label: '우편번호' }
+    ];
+
+    const synonyms = {
+      name: ['성명', '이름', 'name'],
+      address: ['도로명주소', '전체주소', 'address', 'fulladdress', '주소'],
+      detail: ['상세주소', '상세', '동호', '동/호', '동 호', '동', '호'],
+      postalCode: ['우편번호', 'postalcode', 'postal_code', 'postcode', 'zip', 'zipcode']
+    };
+    const norm = (s) => String(s || '').toLowerCase();
+    const isMatch = (col, key) => synonyms[key].some(k => norm(col).includes(norm(k)));
+
     const rowStyle = 'display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:16px 24px;margin:10px 0 14px 0';
     const lblStyle = 'min-width:120px;font-weight:600;';
     const selStyle = 'padding:8px 10px;border:1px solid #ddd;border-radius:6px;min-width:200px;background:#fff;';
-    let html=''; fields.forEach(f=>{ html+=`<div class="field-mapping" style="${rowStyle}"><label style="${lblStyle}">${f.label}:</label><select data-field="${f.key}" style="${selStyle}"><option value="">선택 안함</option>${columns.map(col=>`<option value="${col}" ${col.toLowerCase().includes(f.key.toLowerCase())?'selected':''}>${col}</option>`).join('')}</select></div>`; });
-    container.innerHTML=html;
+    let html = '';
+    fields.forEach(field => {
+      html += `
+        <div class="field-mapping" style="${rowStyle}">
+          <label style="${lblStyle}">${field.label}:</label>
+          <select data-field="${field.key}" style="${selStyle}">
+            <option value="">선택 안함</option>
+            ${columns.map(col => `<option value="${col}" ${isMatch(col, field.key) ? 'selected' : ''}>${col}</option>`).join('')}
+          </select>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
     // 안전장치: 잘못 삽입된 CSS 텍스트 노드 제거
     try {
       Array.from(container.childNodes).forEach(n => {
@@ -305,119 +633,393 @@
       });
       container.querySelectorAll('pre,code,style').forEach(el => el.remove());
     } catch(_) {}
-    // 동의어 기반 자동 매핑 보강
-    try {
-      const synonyms = {
-        name: ['성명','이름','name'],
-        address: ['도로명주소','전체주소','address','fulladdress','주소'],
-        detail: ['상세주소','상세','동호','동/호','동 호','동','호'],
-        postalCode: ['우편번호','postalcode','postal_code','postcode','zip','zipcode']
-      };
-      const norm = s => String(s||'').toLowerCase();
-      const best = (cols, keys) => {
-        for (const k of keys) {
-          const nk = norm(k);
-          const hit = cols.find(c => norm(c).includes(nk));
-          if (hit) return hit;
-        }
-        return '';
-      };
-      container.querySelectorAll('select').forEach(sel => {
-        const key = sel.getAttribute('data-field');
-        if (!sel.value) {
-          const pick = best(columns, synonyms[key] || []);
-          if (pick) sel.value = pick;
-        }
+
+    // 이벤트 리스너 추가
+    container.querySelectorAll('select').forEach(select => {
+      select.addEventListener('change', (e) => {
+        const field = e.target.getAttribute('data-field');
+        const column = e.target.value;
+        fieldMappings[field] = column;
       });
-    } catch(_) {}
-    container.querySelectorAll('select').forEach(sel=>{ sel.addEventListener('change',(e)=>{ const field=e.target.getAttribute('data-field'); const column=e.target.value; fieldMappings[field]=column; }); });
-    fields.forEach(f=>{ const sel=container.querySelector(`select[data-field="${f.key}"]`); if(sel&&sel.value){ fieldMappings[f.key]=sel.value; } });
+    });
+
+    // 초기 매핑 설정
+    fields.forEach(field => {
+      const select = container.querySelector(`select[data-field="${field.key}"]`);
+      if (select && select.value) {
+        fieldMappings[field.key] = select.value;
+      }
+    });
   }
 
-  function generateLabels(){
-    if(!labelData||Object.keys(fieldMappings).length===0){ alert('데이터와 필드 매핑을 확인해주세요.'); return; }
-    let dataRows, headers; if(Array.isArray(labelData)){ dataRows=labelData; headers=labelData.length>0?Object.keys(labelData[0]):[]; }
-    else if(labelData.headers&&labelData.rows){ dataRows=labelData.rows; headers=labelData.headers; }
-    else{ alert('잘못된 데이터 형식입니다.'); return; }
-    if(dataRows.length===0){ alert('생성할 데이터가 없습니다.'); return; }
-
-    const template=document.getElementById('labelTemplate')?.value||'2x9';
-    const templateMap={ '2x9':{perSheet:18,sheetClass:'label-sheet-2x9'}, '3x7':{perSheet:21,sheetClass:'label-sheet-3x7'}, '4x6':{perSheet:24,sheetClass:'label-sheet-4x6'} };
-    const { perSheet, sheetClass }=templateMap[template]||templateMap['2x9'];
-
-    const sheetContainer=document.getElementById('labelModalSheet'); if(!sheetContainer){ alert('라벨 모달 컨테이너를 찾을 수 없습니다.'); return; } sheetContainer.innerHTML='';
-    const total=dataRows.length; const sheetCount=Math.ceil(total/perSheet)||1; let dataIndex=0; const nameSuffix=document.getElementById('nameSuffix')?.value||'';
-    for(let s=0;s<sheetCount;s++){
-      let sheetHtml=''; for(let i=0;i<perSheet;i++){
-        if(dataIndex<total){ const row=dataRows[dataIndex]; let name='',address='',detail='',postalCode='';
-          if(typeof row==='object'&&!Array.isArray(row)){ name=fieldMappings.name? (row[fieldMappings.name]??''):''; address=fieldMappings.address? (row[fieldMappings.address]??''):''; detail=fieldMappings.detail? (row[fieldMappings.detail]??''):''; postalCode=fieldMappings.postalCode? (row[fieldMappings.postalCode]??''):''; }
-          else if(Array.isArray(row)){ const nameIdx=headers.indexOf(fieldMappings.name); const addrIdx=headers.indexOf(fieldMappings.address); const detIdx=headers.indexOf(fieldMappings.detail); const pcIdx=headers.indexOf(fieldMappings.postalCode); name=nameIdx>=0?(row[nameIdx]??''):''; address=addrIdx>=0?(row[addrIdx]??''):''; detail=detIdx>=0?(row[detIdx]??''):''; postalCode=pcIdx>=0?(row[pcIdx]??''):''; }
-          if(name&&nameSuffix) name = name + ' ' + nameSuffix;
-          const isLong = `${address}`.length>25 || `${name}`.length>18 || `${detail}`.length>20;
-          sheetHtml += `<div class="label-item${isLong?' long-content':''}"><div class="label-address">${address??''}</div>${detail?`<div class=\"label-detail\">${detail}</div>`:''}<div class="label-name">${name??''}</div><div class="label-postal-code">${postalCode??''}</div></div>`;
-          dataIndex++;
-        } else { sheetHtml += `<div class="label-item empty"></div>`; }
-      }
-      const sheet=document.createElement('div'); sheet.className=`${sheetClass} label-preview`; sheet.innerHTML=sheetHtml; sheetContainer.appendChild(sheet);
+  function generateLabels() {
+    if (!labelData || Object.keys(fieldMappings).length === 0) {
+      alert('데이터와 필드 매핑을 확인해주세요.');
+      return;
     }
+
+    // 데이터 형식 확인
+    let dataRows;
+    let headers;
+
+    if (Array.isArray(labelData)) {
+      // 기존 배열 형식 (샘플 데이터)
+      dataRows = labelData;
+      headers = labelData.length > 0 ? Object.keys(labelData[0]) : [];
+    } else if (labelData.headers && labelData.rows) {
+      // 새로운 형식 (API 응답)
+      dataRows = labelData.rows;
+      headers = labelData.headers;
+    } else {
+      alert('잘못된 데이터 형식입니다.');
+      return;
+    }
+
+    if (dataRows.length === 0) {
+      alert('생성할 데이터가 없습니다.');
+      return;
+    }
+
+    // 템플릿별 설정
+    const template = document.getElementById('labelTemplate')?.value || '2x9';
+    const templateMap = {
+      '2x9': { perSheet: 18, sheetClass: 'label-sheet-2x9' },
+      '3x7': { perSheet: 21, sheetClass: 'label-sheet-3x7' },
+      '4x6': { perSheet: 24, sheetClass: 'label-sheet-4x6' },
+    };
+    const { perSheet, sheetClass } = templateMap[template] || templateMap['2x9'];
+
+    // 모달용 컨테이너에 렌더링
+    const labelSheetContainer = document.getElementById('labelModalSheet');
+    if (!labelSheetContainer) {
+      alert('라벨 모달 컨테이너를 찾을 수 없습니다.');
+      return;
+    }
+    labelSheetContainer.innerHTML = '';
+
+    const total = dataRows.length;
+    const sheetCount = Math.ceil(total / perSheet) || 1;
+    let dataIndex = 0;
+    const nameSuffix = document.getElementById('nameSuffix')?.value || '';
+
+    for (let s = 0; s < sheetCount; s++) {
+      let sheetHtml = '';
+      for (let i = 0; i < perSheet; i++) {
+        if (dataIndex < total) {
+          const rowData = dataRows[dataIndex];
+          let name = '', address = '', detail = '', postalCode = '';
+
+          if (typeof rowData === 'object' && !Array.isArray(rowData)) {
+            // 객체 형태 (샘플 데이터)
+            name = fieldMappings.name ? (rowData[fieldMappings.name] ?? '') : '';
+            address = fieldMappings.address ? (rowData[fieldMappings.address] ?? '') : '';
+            detail = fieldMappings.detail ? (rowData[fieldMappings.detail] ?? '') : '';
+            postalCode = fieldMappings.postalCode ? (rowData[fieldMappings.postalCode] ?? '') : '';
+          } else if (Array.isArray(rowData)) {
+            // 배열 형태 (API 응답)
+            const nameIndex = headers.indexOf(fieldMappings.name);
+            const addressIndex = headers.indexOf(fieldMappings.address);
+            const detailIndex = headers.indexOf(fieldMappings.detail);
+            const postalCodeIndex = headers.indexOf(fieldMappings.postalCode);
+            name = nameIndex >= 0 ? (rowData[nameIndex] ?? '') : '';
+            address = addressIndex >= 0 ? (rowData[addressIndex] ?? '') : '';
+            detail = detailIndex >= 0 ? (rowData[detailIndex] ?? '') : '';
+            postalCode = postalCodeIndex >= 0 ? (rowData[postalCodeIndex] ?? '') : '';
+          }
+
+          if (name && nameSuffix) name = name + ' ' + nameSuffix;
+          const isLong = `${address}`.length > 25 || `${name}`.length > 18 || `${detail}`.length > 20;
+          sheetHtml += `
+            <div class="label-item${isLong ? ' long-content' : ''}">
+              <div class="label-address">${address ?? ''}</div>
+              ${detail ? `<div class=\"label-detail\">${detail}</div>` : ''}
+              <div class="label-name">${name ?? ''}</div>
+              <div class="label-postal-code">${postalCode ?? ''}</div>
+            </div>
+          `;
+          dataIndex++;
+        } else {
+          // 남는 칸은 빈 셀로 채움
+          sheetHtml += `<div class="label-item empty"></div>`;
+        }
+      }
+
+      const sheet = document.createElement('div');
+      sheet.className = `${sheetClass} label-preview`;
+      sheet.innerHTML = sheetHtml;
+      labelSheetContainer.appendChild(sheet);
+    }
+
     // 모달 표시 + 포커스/배경 비활성화(inert)
-    const modal=document.getElementById('labelModal'); const appContainer=document.querySelector('.container'); if(appContainer) appContainer.setAttribute('inert','');
-    if(modal){ lastFocusedElement=(document.activeElement&&document.activeElement.focus)?document.activeElement:null; modal.classList.add('active'); modal.setAttribute('aria-hidden','false'); const first=document.getElementById('btnModalClose')||modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'); if(first&&first.focus) first.focus(); modalKeydownHandler=(e)=>{ if(e.key!=='Tab') return; const focusables=Array.from(modal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')).filter(el=>!el.hasAttribute('disabled')&&el.offsetParent!==null); if(focusables.length===0) return; const firstEl=focusables[0]; const lastEl=focusables[focusables.length-1]; if(e.shiftKey){ if(document.activeElement===firstEl){ e.preventDefault(); lastEl.focus(); } } else { if(document.activeElement===lastEl){ e.preventDefault(); firstEl.focus(); } } }; modal.addEventListener('keydown', modalKeydownHandler); }
+    const modal = document.getElementById('labelModal');
+    const appContainer = document.querySelector('.container');
+    if (appContainer) appContainer.setAttribute('inert', '');
+    if (modal) {
+      lastFocusedElement = (document.activeElement && document.activeElement.focus) ? document.activeElement : null;
+      modal.classList.add('active');
+      modal.setAttribute('aria-hidden', 'false');
+      // 첫 포커스 대상
+      const first = document.getElementById('btnModalClose') || modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (first && first.focus) first.focus();
+      // 탭 포커스 트랩
+      modalKeydownHandler = (e) => {
+        if (e.key !== 'Tab') return;
+        const focusables = Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+          .filter(el => !el.hasAttribute('disabled') && el.offsetParent !== null);
+        if (focusables.length === 0) return;
+        const firstEl = focusables[0];
+        const lastEl = focusables[focusables.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === firstEl) {
+            e.preventDefault();
+            lastEl.focus();
+          }
+        } else {
+          if (document.activeElement === lastEl) {
+            e.preventDefault();
+            firstEl.focus();
+          }
+        }
+      };
+      modal.addEventListener('keydown', modalKeydownHandler);
+    }
     document.getElementById('labelPreview').classList.remove('hidden');
   }
 
-  function printLabels(){
-    const originalTitle=document.title; const template=document.getElementById('labelTemplate')?.value||'2x9';
-    const id=(typeof currentLabelJobId==='string'&&currentLabelJobId)?currentLabelJobId:new Date().toISOString().replace(/[-:T.Z]/g,'').slice(0,14);
-    const nameSuffix=document.getElementById('nameSuffix')?.value||''; const suffix=nameSuffix?`_${nameSuffix}`:''; document.title=`labels_${template}_${id}${suffix}`;
-    const restore=()=>{ document.title=originalTitle; window.removeEventListener('afterprint', restore); if(mql) mql.removeListener(beforeAfterHandler); };
-    window.addEventListener('afterprint', restore); const mql=window.matchMedia&&window.matchMedia('print'); const beforeAfterHandler=(e)=>{ if(!e.matches) restore(); }; if(mql&&mql.addListener) mql.addListener(beforeAfterHandler); window.print(); setTimeout(restore,2000);
+  function printLabels() {
+    // 인쇄 시 PDF 기본 파일명은 문서 title을 따릅니다.
+    const originalTitle = document.title;
+    const template = document.getElementById('labelTemplate')?.value || '2x9';
+    const id = (typeof currentLabelJobId === 'string' && currentLabelJobId) 
+      ? currentLabelJobId 
+      : new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+    const nameSuffix = document.getElementById('nameSuffix')?.value || '';
+    const suffix = nameSuffix ? `_${nameSuffix}` : '';
+    const newTitle = `labels_${template}_${id}${suffix}`;
+
+    document.title = newTitle;
+
+    const restore = () => {
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', restore);
+      if (mql) mql.removeListener(beforeAfterHandler);
+    };
+
+    // 일부 브라우저 호환성: afterprint 이벤트 + matchMedia
+    window.addEventListener('afterprint', restore);
+    const mql = window.matchMedia && window.matchMedia('print');
+    const beforeAfterHandler = (e) => { if (!e.matches) restore(); };
+    if (mql && mql.addListener) mql.addListener(beforeAfterHandler);
+
+    window.print();
+
+    // Fallback: afterprint 미지원 브라우저 대비
+    setTimeout(restore, 2000);
   }
 
-  function closeLabelModal(){
-    const modal=document.getElementById('labelModal'); const appContainer=document.querySelector('.container');
-    if(lastFocusedElement&&document.contains(lastFocusedElement)){ try{ lastFocusedElement.focus(); }catch(_){} } else { try{ document.body.focus(); }catch(_){} }
-    if(modal){ if(modalKeydownHandler) modal.removeEventListener('keydown', modalKeydownHandler); modalKeydownHandler=null; modal.classList.remove('active'); modal.setAttribute('aria-hidden','true'); }
-    if(appContainer) appContainer.removeAttribute('inert');
+  function closeLabelModal() {
+    const modal = document.getElementById('labelModal');
+    const appContainer = document.querySelector('.container');
+    // 먼저 포커스를 모달 밖으로 이동
+    if (lastFocusedElement && document.contains(lastFocusedElement)) {
+      try { lastFocusedElement.focus(); } catch (_) {}
+    } else {
+      try { document.body.focus(); } catch (_) {}
+    }
+    if (modal) {
+      if (modalKeydownHandler) modal.removeEventListener('keydown', modalKeydownHandler);
+      modalKeydownHandler = null;
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    if (appContainer) appContainer.removeAttribute('inert');
   }
 
-  function resetUploadUI(){ const fileInput=document.getElementById('file'); if(fileInput) fileInput.value=''; const progressDiv=document.getElementById('uploadProgress'); progressDiv.classList.add('hidden'); document.getElementById('progressFill').style.width='0%'; document.getElementById('progressText').textContent='처리 중...'; const resultDiv=document.getElementById('uploadResult'); resultDiv.classList.add('hidden'); resultDiv.innerHTML=''; }
-  function resetSearchUI(){ const input=document.getElementById('address'); if(input) input.value=''; const resultDiv=document.getElementById('searchResult'); resultDiv.classList.add('hidden'); resultDiv.innerHTML=''; input&&input.focus(); }
-  function updateLabelProgress(p,t){ document.getElementById('labelProgressFill').style.width=p+'%'; document.getElementById('labelProgressText').textContent=t; }
+  async function downloadHwpx() {
+    try {
+      if (!currentLabelJobId) {
+        alert('먼저 라벨 데이터를 업로드/처리해 주세요.');
+        return;
+      }
+      const nameSuffix = document.getElementById('nameSuffix')?.value || '';
+      const url = `${API_BASE}/file/hwpx/${currentLabelJobId}?nameSuffix=${encodeURIComponent(nameSuffix)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || '다운로드 실패');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `labels_${currentLabelJobId}.hwpx`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(objectUrl);
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('HWPX 다운로드 실패:', e);
+      alert('HWPX 다운로드 중 오류가 발생했습니다: ' + e.message);
+    }
+  }
 
-  function resetLabelUI(){ labelData=null; fieldMappings={}; const fileInput=document.getElementById('labelFile'); if(fileInput) fileInput.value=''; document.getElementById('labelUploadProgress').classList.add('hidden'); document.getElementById('labelDataPreview').classList.add('hidden'); document.getElementById('labelPreview').classList.add('hidden'); const tbl=document.getElementById('labelDataTable'); const fmap=document.getElementById('labelFieldMapping'); const sheet=document.getElementById('labelSheet'); const modalSheet=document.getElementById('labelModalSheet'); if(tbl) tbl.innerHTML=''; if(fmap) fmap.innerHTML=''; if(sheet) sheet.innerHTML=''; if(modalSheet) modalSheet.innerHTML=''; const modal=document.getElementById('labelModal'); if(modal){ modal.classList.remove('active'); modal.setAttribute('aria-hidden','true'); } const appContainer=document.querySelector('.container'); if(appContainer) appContainer.removeAttribute('inert'); updateLabelProgress(0,'처리 중...'); }
+  function downloadPDF() {
+    // PDF 생성은 추후 구현
+    alert('PDF 다운로드 기능은 준비 중입니다.');
+  }
 
-  // Wire events
-  document.addEventListener('DOMContentLoaded', ()=>{
+  function resetLabelUI() {
+    labelData = null;
+    fieldMappings = {};
+    
+    // 파일 입력 초기화
+    const fileInput = document.getElementById('labelFile');
+    if (fileInput) fileInput.value = '';
+    
+    // UI 요소들 숨기기
+    document.getElementById('labelUploadProgress').classList.add('hidden');
+    document.getElementById('labelDataPreview').classList.add('hidden');
+    document.getElementById('labelPreview').classList.add('hidden');
+    
+    // 내용 초기화
+    const tbl = document.getElementById('labelDataTable');
+    const fmap = document.getElementById('labelFieldMapping');
+    const sheet = document.getElementById('labelSheet');
+    const modalSheet = document.getElementById('labelModalSheet');
+    if (tbl) tbl.innerHTML = '';
+    if (fmap) fmap.innerHTML = '';
+    if (sheet) sheet.innerHTML = '';
+    if (modalSheet) modalSheet.innerHTML = '';
+
+    // 모달 닫기
+    const modal = document.getElementById('labelModal');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    const appContainer = document.querySelector('.container');
+    if (appContainer) appContainer.removeAttribute('inert');
+    
+    // 진행 상황 초기화
+    updateLabelProgress(0, '처리 중...');
+  }
+
+  // Event wiring
+  document.addEventListener('DOMContentLoaded', () => {
     // (removed) overly aggressive CSS cleanup that could remove required styles
-    const apiInput=document.getElementById('apiBaseInput'); if(apiInput) apiInput.value=API_BASE;
-    const btnSaveApi=document.getElementById('btnSaveApiBase'); if(btnSaveApi) btnSaveApi.addEventListener('click', saveApiBase);
-    const btnCheckApi=document.getElementById('btnCheckApi'); if(btnCheckApi) btnCheckApi.addEventListener('click', checkApiHealth);
+    // API 바 초기화
+    const apiInput = document.getElementById('apiBaseInput');
+    if (apiInput) {
+      apiInput.value = API_BASE;
+    }
+    const btnSaveApi = document.getElementById('btnSaveApiBase');
+    if (btnSaveApi) btnSaveApi.addEventListener('click', saveApiBase);
+    const btnCheckApi = document.getElementById('btnCheckApi');
+    if (btnCheckApi) btnCheckApi.addEventListener('click', checkApiHealth);
+    // 자동 연결 확인
     checkApiHealth();
-    document.querySelectorAll('.tab').forEach(btn=>{ btn.addEventListener('click',()=>{ const tab=btn.getAttribute('data-tab'); switchTab(tab, btn); }); });
+    // Tabs
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const tab = btn.getAttribute('data-tab');
+        switchTab(tab, btn);
+      });
+    });
+    // Search button
     document.getElementById('btnSearch').addEventListener('click', searchAddress);
-    document.getElementById('address').addEventListener('keypress', (e)=>{ if(e.key==='Enter') searchAddress(); });
-    const dropArea=document.getElementById('fileDropArea'); dropArea.addEventListener('click', ()=>document.getElementById('file').click());
+    // Enter to search
+    document.getElementById('address').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') searchAddress();
+    });
+    // File trigger by clicking area
+    const dropArea = document.getElementById('fileDropArea');
+    dropArea.addEventListener('click', () => document.getElementById('file').click());
+    // File input change
     document.getElementById('file').addEventListener('change', handleFileSelect);
-    dropArea.addEventListener('dragover', (e)=>{ e.preventDefault(); dropArea.classList.add('dragover'); });
-    dropArea.addEventListener('dragleave', ()=>dropArea.classList.remove('dragover'));
-    dropArea.addEventListener('drop', (e)=>{ e.preventDefault(); dropArea.classList.remove('dragover'); const files=e.dataTransfer.files; if(files.length>0) uploadFile(files[0]); });
-    document.getElementById('uploadResult').addEventListener('click',(e)=>{ const reset=e.target.closest('button[data-reset-upload]'); if(reset){ resetUploadUI(); return; } });
-    document.getElementById('searchResult').addEventListener('click', (e)=>{ const reset=e.target.closest('button[data-reset-search]'); if(reset){ resetSearchUI(); } });
+    // Drag & drop
+    dropArea.addEventListener('dragover', (e) => { e.preventDefault(); dropArea.classList.add('dragover'); });
+    dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+    dropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) uploadFile(files[0]);
+    });
+    // Delegate buttons inside result (download/reset)
+    document.getElementById('uploadResult').addEventListener('click', (e) => {
+      const dl = e.target.closest('button[data-download-id]');
+      if (dl) {
+        downloadFile(dl.getAttribute('data-download-id'));
+        return;
+      }
+      const reset = e.target.closest('button[data-reset-upload]');
+      if (reset) {
+        resetUploadUI();
+        return;
+      }
+    });
+    // Delegate search result reset
+    document.getElementById('searchResult').addEventListener('click', (e) => {
+      const reset = e.target.closest('button[data-reset-search]');
+      if (reset) {
+        resetSearchUI();
+      }
+    });
 
-    const labelDropArea=document.getElementById('labelFileDropArea'); labelDropArea.addEventListener('click', ()=>document.getElementById('labelFile').click());
+    // 라벨 관련 이벤트 리스너
+    // 라벨 파일 드롭 영역
+    const labelDropArea = document.getElementById('labelFileDropArea');
+    labelDropArea.addEventListener('click', () => document.getElementById('labelFile').click());
+    
+    // 라벨 파일 입력
     document.getElementById('labelFile').addEventListener('change', handleLabelFileSelect);
-    labelDropArea.addEventListener('dragover', (e)=>{ e.preventDefault(); labelDropArea.classList.add('dragover'); });
-    labelDropArea.addEventListener('dragleave', ()=>labelDropArea.classList.remove('dragover'));
-    labelDropArea.addEventListener('drop', (e)=>{ e.preventDefault(); labelDropArea.classList.remove('dragover'); const files=e.dataTransfer.files; if(files.length>0) uploadLabelFile(files[0]); });
-
+    
+    // 라벨 파일 드래그 앤 드롭
+    labelDropArea.addEventListener('dragover', (e) => { 
+      e.preventDefault(); 
+      labelDropArea.classList.add('dragover'); 
+    });
+    labelDropArea.addEventListener('dragleave', () => labelDropArea.classList.remove('dragover'));
+    labelDropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      labelDropArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) processLabelFile(files[0]);
+    });
+    
+    // 라벨 생성 버튼
     document.getElementById('btnGenerateLabels').addEventListener('click', generateLabels);
-    const btnPrint=document.getElementById('btnPrintLabels'); if(btnPrint) btnPrint.addEventListener('click', printLabels);
-    const btnModalPrint=document.getElementById('btnModalPrint'); if(btnModalPrint) btnModalPrint.addEventListener('click', printLabels);
-    const btnModalClose=document.getElementById('btnModalClose'); if(btnModalClose) btnModalClose.addEventListener('click', closeLabelModal);
-    const btnModalReset=document.getElementById('btnModalReset'); if(btnModalReset) btnModalReset.addEventListener('click', resetLabelUI);
-    const modalEl=document.getElementById('labelModal'); if(modalEl){ modalEl.addEventListener('click',(e)=>{ if(e.target&&e.target.id==='labelModal') closeLabelModal(); }); }
+    
+    // 라벨 인쇄 버튼 (기존 영역)
+    const btnPrint = document.getElementById('btnPrintLabels');
+    if (btnPrint) btnPrint.addEventListener('click', printLabels);
+    // 모달 버튼들
+    const btnModalPrint = document.getElementById('btnModalPrint');
+    if (btnModalPrint) btnModalPrint.addEventListener('click', printLabels);
+    const btnModalClose = document.getElementById('btnModalClose');
+    if (btnModalClose) btnModalClose.addEventListener('click', closeLabelModal);
+    const btnModalReset = document.getElementById('btnModalReset');
+    if (btnModalReset) btnModalReset.addEventListener('click', resetLabelUI);
+    const modalEl = document.getElementById('labelModal');
+    if (modalEl) {
+      modalEl.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'labelModal') closeLabelModal();
+      });
+    }
+    
+    // HWPX 다운로드 버튼
+    const btnHwpx = document.getElementById('btnDownloadHWPX');
+    if (btnHwpx) btnHwpx.addEventListener('click', downloadHwpx);
+    const btnPdf = document.getElementById('btnDownloadPDF');
+    if (btnPdf) btnPdf.addEventListener('click', downloadPDF);
+    
+    // 라벨 초기화 버튼
     document.getElementById('btnLabelReset').addEventListener('click', resetLabelUI);
-    document.getElementById('btnLoadSampleData').addEventListener('click', ()=>{ labelData=generateSampleData(); showLabelDataPreview(); });
+    
+    // 샘플 데이터 로드 버튼
+    document.getElementById('btnLoadSampleData').addEventListener('click', () => {
+      labelData = generateSampleData();
+      showLabelDataPreview();
+    });
   });
 })();
