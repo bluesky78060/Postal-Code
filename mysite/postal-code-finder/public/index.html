@@ -4,327 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>우편번호 자동 입력 시스템</title>
-    <link rel="preload" as="script" href="/app.js"/>
+    <link rel="stylesheet" href="/label-print.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        .header p { font-size: 1.1rem; opacity: 0.9; }
+        .content { padding: 40px; }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+        /* API 연결 바 */
+        .api-bar { display: flex; align-items: center; gap: 8px; background: #f8f9fa; border: 1px solid #e6e8eb; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; flex-wrap: wrap; }
+        .api-bar input[type="text"] { flex: 1 1 320px; min-width: 260px; padding: 8px 10px; border: 1px solid #dadde1; border-radius: 8px; }
+        .api-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem; }
+        .api-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
+        .api-dot.ok { background: #2ecc71; } .api-dot.fail { background: #e74c3c; }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
+        .tabs { display: flex; border-bottom: 2px solid #f0f0f0; margin-bottom: 30px; }
+        .tab { flex: 1; padding: 15px; text-align: center; background: none; border: none; font-size: 1.1rem; cursor: pointer; transition: all 0.3s ease; }
+        .tab.active { background: #667eea; color: white; border-radius: 10px 10px 0 0; }
+        .tab-content { display: none; } .tab-content.active { display: block; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
+        .form-group input { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1rem; transition: border-color 0.3s ease; }
+        .form-group input:focus { outline: none; border-color: #667eea; }
+        .btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 30px; border-radius: 10px; font-size: 1rem; cursor: pointer; transition: transform 0.2s ease; }
+        .btn:hover { transform: translateY(-2px); }
+        .file-upload { border: 3px dashed #667eea; border-radius: 10px; padding: 40px; text-align: center; margin-bottom: 20px; transition: all 0.3s ease; cursor: pointer; }
+        .file-upload:hover { background: #f8f9ff; } .file-upload.dragover { border-color: #764ba2; background: #f0f4ff; }
+        .progress-bar { width: 100%; height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden; margin: 20px 0; }
+        .progress-fill { height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 0%; transition: width 0.3s ease; }
+        .result { background: #f8f9fa; border-radius: 10px; padding: 20px; margin-top: 20px; border-left: 4px solid #667eea; }
+        .hidden { display: none; }
+        .error { background: #fee; border-left-color: #e74c3c; color: #c0392b; }
+        .success { background: #efe; border-left-color: #27ae60; color: #27ae60; }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
+        /* 모달 기본 스타일 */
+        .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.5); padding: 24px; z-index: 1000; }
+        .modal.active { display: flex; }
+        .modal-content { background: #fff; width: min(960px, 95vw); max-height: 90vh; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.25); display: flex; flex-direction: column; }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #eee; }
+        .modal-body { padding: 16px; overflow: auto; background: #fafafa; }
+        #labelModalSheet { display: flex; flex-direction: column; gap: 20px; align-items: flex-start; }
 
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .content {
-            padding: 40px;
-        }
-
-        .tabs {
-            display: flex;
-            border-bottom: 2px solid #f0f0f0;
-            margin-bottom: 30px;
-        }
-
-        .tab {
-            flex: 1;
-            padding: 15px;
-            text-align: center;
-            background: none;
-            border: none;
-            font-size: 1.1rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .tab.active {
-            background: #667eea;
-            color: white;
-            border-radius: 10px 10px 0 0;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 10px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .file-upload {
-            border: 3px dashed #667eea;
-            border-radius: 10px;
-            padding: 40px;
-            text-align: center;
-            margin-bottom: 20px;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .file-upload:hover {
-            background: #f8f9ff;
-        }
-
-        .file-upload.dragover {
-            border-color: #764ba2;
-            background: #f0f4ff;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 20px;
-            background: #e0e0e0;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 20px 0;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-
-        .result {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-            border-left: 4px solid #667eea;
-        }
-
-        /* CLS 최소화를 위한 동적 영역 최소 높이 예약 */
-        #searchResult { min-height: 120px; }
-        #uploadResult { min-height: 120px; }
-        #labelPreview { min-height: 160px; }
-
-        .hidden {
-            display: none;
-        }
-
-        .error {
-            background: #fee;
-            border-left-color: #e74c3c;
-            color: #c0392b;
-        }
-
-        .success {
-            background: #efe;
-            border-left-color: #27ae60;
-            color: #27ae60;
-        }
-
-        /* 라벨 출력 관련 스타일 */
-        .label-sheet {
-            /* 미리보기 컨테이너: 여러 페이지(.label-page)를 수직으로 나열 */
-            width: 100%;
-            max-width: 210mm;
-            margin: 20px auto;
-            transform-origin: top left;
-            transform: scale(0.4);
-        }
-
-        /* A4 페이지 컨테이너 - 절대 위치 지정 방식 */
-        .label-page {
-            width: 210mm;
-            height: 297mm;
-            background: white;
-            border: 1px solid #ccc;
-            position: relative;
-            /* 정확한 페이지 여백: 위 8mm, 아래 12mm, 왼쪽 5mm */
-            padding: 8mm 0 12mm 5mm;
-            box-sizing: border-box;
-            page-break-after: always;
-            break-after: page;
-        }
-
-        .label-item {
-            position: absolute;
-            width: 100mm;
-            height: 30mm;
-            border: 1px solid #333;
-            padding: 4mm;
-            box-sizing: border-box;
-            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            background: white;
-        }
-
-        .label-item .postal-code {
-            font-size: 16pt;
-            font-weight: bold;
-            text-align: left;
-            margin-bottom: 3mm;
-            color: #000;
-            letter-spacing: 2px;
-            font-family: 'Courier New', monospace;
-        }
-
-        .label-item .address {
-            font-size: 12pt;
-            line-height: 1.4;
-            text-align: left;
-            margin-bottom: 4mm;
-            color: #000;
-            word-break: keep-all;
-            overflow-wrap: break-word;
-            flex-grow: 1;
-        }
-
-        .label-item .detail-address {
-            font-size: 11pt;
-            line-height: 1.3;
-            text-align: left;
-            margin: -2mm 0 3mm 0;
-            color: #000;
-            word-break: keep-all;
-            overflow-wrap: break-word;
-        }
-
-        .label-item .name {
-            font-size: 14pt;
-            font-weight: bold;
-            text-align: right;
-            color: #000;
-            margin-top: auto;
-        }
-
-        .field-mapping {
-            display: flex;
-            align-items: center;
-            margin: 5px 0;
-            gap: 10px;
-        }
-
-        .field-mapping label {
-            min-width: 80px;
-            font-weight: 600;
-        }
-
-        .field-mapping select {
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            min-width: 150px;
-        }
-
-        @media print {
-            /* A4 페이지 정확한 설정 */
-            @page {
-                size: A4;
-                margin: 0; /* 마진 제거하고 컨테이너에서 처리 */
-            }
-            
-            html, body { 
-                margin: 0; 
-                padding: 0; 
-                width: 210mm;
-                height: 297mm;
-            }
-            
-            /* 다른 UI 요소 숨기기 */
-            body * { display: none !important; }
-
-            /* 인쇄 영역만 표시 */
-            .label-sheet { 
-                display: block !important; 
-                transform: none !important; 
-                margin: 0 !important; 
-                width: 210mm;
-                max-width: none !important;
-            }
-            
-            .label-page { 
-                display: block !important; 
-                position: relative !important;
-                padding: 8mm 0 12mm 5mm !important;
-                border: none !important; 
-                page-break-after: always; 
-                break-after: page;
-                width: 210mm !important;
-                height: 297mm !important;
-                box-sizing: border-box !important;
-            }
-            
-            .label-item { 
-                display: flex !important; 
-                position: absolute !important;
-                break-inside: avoid; 
-                page-break-inside: avoid; 
-            }
-        }
+        /* 인쇄용 스타일은 /label-print.css 에 정의됨 */
     </style>
 </head>
 <body>
@@ -335,6 +59,13 @@
         </div>
 
         <div class="content">
+            <div class="api-bar">
+                <span style="font-weight:600; color:#555;">API</span>
+                <input id="apiBaseInput" type="text" placeholder="예: http://localhost:3005/api">
+                <button class="btn" id="btnSaveApiBase" title="API 주소 저장">저장</button>
+                <button class="btn" id="btnCheckApi" title="API 연결 확인">연결 확인</button>
+                <span class="api-status" id="apiStatus"><span class="api-dot"></span><span id="apiStatusText">확인 전</span></span>
+            </div>
             <div class="tabs">
                 <button class="tab active" data-tab="search">주소 검색</button>
                 <button class="tab" data-tab="upload">엑셀 업로드</button>
@@ -350,10 +81,7 @@
                 <div style="margin-bottom: 10px;">
                     <button class="btn" id="btnSearch">🔍 우편번호 찾기</button>
                 </div>
-                
-                <div id="searchResult" class="result hidden">
-                    <!-- 검색 결과가 여기에 표시됩니다 -->
-                </div>
+                <div id="searchResult" class="result hidden"></div>
             </div>
 
             <!-- 엑셀 업로드 탭 -->
@@ -371,9 +99,7 @@
                     <p id="progressText">처리 중...</p>
                 </div>
 
-                <div id="uploadResult" class="result hidden">
-                    <!-- 업로드 결과가 여기에 표시됩니다 -->
-                </div>
+                <div id="uploadResult" class="result hidden"></div>
             </div>
 
             <!-- 라벨 출력 탭 -->
@@ -410,9 +136,7 @@
                     </div>
                     <div style="margin: 20px 0;">
                         <label>라벨 필드 설정:</label>
-                        <div id="labelFieldMapping" style="margin-top: 10px;">
-                            <!-- 필드 매핑이 여기에 표시됩니다 -->
-                        </div>
+                        <div id="labelFieldMapping" style="margin-top: 10px;"></div>
                         <div class="field-mapping" style="margin-top: 10px;">
                             <label>성명 뒤 호칭:</label>
                             <select id="nameSuffix" style="margin-left: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
@@ -422,28 +146,44 @@
                             </select>
                         </div>
                     </div>
-                    <button class="btn" id="btnGenerateLabels">🏷️ 라벨 생성</button>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button class="btn" id="btnGenerateLabels">🏷️ 라벨 생성</button>
+                        <button class="btn" id="btnLabelReset">↩️ 초기화</button>
+                    </div>
                 </div>
 
                 <div id="labelPreview" class="hidden">
                     <h3>🖨️ 라벨 미리보기</h3>
                     <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button class="btn" id="btnDownloadHWPX">📥 HWPX 다운로드</button>
-                        <button class="btn" id="btnDownloadPDF">📥 PDF 다운로드</button>
-                        <button class="btn" id="btnLabelReset">↩️ 초기화</button>
+                        <button class="btn" id="btnPrintLabels">🖨️ 인쇄하기</button>
                     </div>
-                    <div id="labelSheet" class="label-sheet">
-                        <!-- 라벨 시트가 여기에 표시됩니다 -->
-                    </div>
+                    <div id="labelSheet" class="label-sheet" style="display:none"></div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- 라벨 미리보기/인쇄 모달 -->
+    <div id="labelModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+        <div class="modal-content" id="labelModalContent">
+            <div class="modal-header">
+                <h3>🖨️ 라벨 미리보기</h3>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn" id="btnModalPrint">🖨️ 인쇄</button>
+                    <button class="btn" id="btnModalReset">↩️ 초기화</button>
+                    <button class="btn" id="btnModalClose">닫기</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="labelModalSheet"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 배포 정보 (선택) -->
     <div style="max-width:800px;margin:10px auto 30px auto;text-align:center;color:#666;font-size:12px">
       <span id="deployInfo">배포 정보 확인 중...</span>
     </div>
-
     <script>
       (function(){
         fetch('/api/health').then(r=>r.json()).then(j=>{
@@ -459,7 +199,6 @@
     </script>
 
     <script defer src="/app.js"></script>
-    <!-- Vercel Speed Insights (enable in Vercel dashboard) -->
     <script defer src="/_vercel/speed-insights/script.js"></script>
-  </body>
+</body>
 </html>
