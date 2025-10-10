@@ -20,6 +20,7 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = Number(config.port) || 3001;
+const STRICT_PORT = String(process.env.STRICT_PORT || '').toLowerCase() === 'true';
 
 // 보안 미들웨어 (개발 편의를 위한 CSP 완화: inline script/style 허용)
 app.use(helmet({
@@ -92,12 +93,22 @@ app.use('/api/file', fileRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(express.static(path.join(__dirname, '../../frontend/public')));
 
+// Favicon (개발 편의)
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // 헬스 체크
 app.get('/api/health', (req, res) => {
+  const cfg = require('./config');
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    provider: cfg?.postal?.provider || 'unknown',
+    keys: {
+      juso: Boolean(cfg?.jusoApiKey),
+      kakao: Boolean(cfg?.kakaoApiKey),
+      vworld: Boolean(cfg?.vworldApiKey)
+    }
   });
 });
 
@@ -151,13 +162,22 @@ function startServer(port, attempts = 0) {
     console.log(`📍 API: ${proto}://localhost:${port}`);
   };
   const onError = (err) => {
-    if (err.code === 'EADDRINUSE' && attempts < 10) {
-      const nextPort = port + 1;
-      if (nextPort >= 65536) {
-        throw new RangeError('No available port below 65536');
+    if (err.code === 'EADDRINUSE') {
+      if (STRICT_PORT) {
+        console.error(`❌ 포트 ${port}가 이미 사용 중입니다. STRICT_PORT=true 이므로 자동 변경하지 않습니다.`);
+        console.error(`다른 프로세스를 종료하거나 .env의 PORT 값을 변경한 후 다시 시도하세요.`);
+        throw err;
       }
-      console.warn(`⚠️ 포트 ${port} 사용 중. 다음 포트 시도: ${nextPort}`);
-      startServer(nextPort, attempts + 1);
+      if (attempts < 10) {
+        const nextPort = port + 1;
+        if (nextPort >= 65536) {
+          throw new RangeError('No available port below 65536');
+        }
+        console.warn(`⚠️ 포트 ${port} 사용 중. 다음 포트 시도: ${nextPort}`);
+        startServer(nextPort, attempts + 1);
+      } else {
+        throw err;
+      }
     } else {
       throw err;
     }

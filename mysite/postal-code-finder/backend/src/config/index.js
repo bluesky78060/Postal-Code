@@ -1,4 +1,10 @@
+// Load env from current working dir and fallback to backend root
+const path = require('path');
 require('dotenv').config();
+try {
+  const backendEnv = path.join(__dirname, '../../.env');
+  require('dotenv').config({ path: backendEnv });
+} catch (_) {}
 const path = require('path');
 
 const config = {
