@@ -135,14 +135,38 @@
     try {
       const formData = new FormData(); formData.append('file', file);
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      const data = await response.json();
-      if (data.success) {
+
+      // 응답 헤더 확인 (파일/JSON 분기)
+      const contentType = response.headers.get('content-type') || '';
+      const contentDisposition = response.headers.get('content-disposition') || '';
+      const looksLikeFile = /attachment/i.test(contentDisposition) || /application\/(vnd\.openxmlformats-officedocument|octet-stream)/i.test(contentType);
+
+      let data = null;
+      if (!looksLikeFile && /application\/json/i.test(contentType)) {
+        try { data = await response.clone().json(); } catch (_) { data = null; }
+      }
+
+      if (data && data.success && data.data && data.data.jobId) {
         currentLabelJobId = data.data.jobId;
         updateLabelProgress(10, '파일 처리 중...');
         await waitForLabelProcessingLabel(currentLabelJobId);
+      } else if (looksLikeFile) {
+        // 서버가 즉시 결과 파일을 반환하는 구성 (Vercel 서버리스 등)
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `labels_result_${Date.now()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        updateLabelProgress(100, '다운로드 완료');
+        prog.classList.add('hidden');
+        alert('서버가 즉시 결과 파일을 반환했습니다. 라벨 미리보기는 로컬 서버 구성에서 지원됩니다.');
       } else {
         prog.classList.add('hidden');
-        alert('파일 업로드 실패: ' + (data.error || ''));   
+        alert('파일 업로드 실패: 서버 응답 형식이 올바르지 않습니다.');
       }
     } catch (e) {
       prog.classList.add('hidden');
