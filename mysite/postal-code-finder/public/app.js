@@ -310,7 +310,10 @@
   function createFieldMappings(columns){
     const container=document.getElementById('labelFieldMapping');
     const fields=[ {key:'name',label:'이름'}, {key:'address',label:'주소'}, {key:'detail',label:'상세주소'}, {key:'postalCode',label:'우편번호'} ];
-    let html=''; fields.forEach(f=>{ html+=`<div class="field-mapping"><label>${f.label}:</label><select data-field="${f.key}"><option value="">선택 안함</option>${columns.map(col=>`<option value="${col}" ${col.toLowerCase().includes(f.key.toLowerCase())?'selected':''}>${col}</option>`).join('')}</select></div>`; });
+    const rowStyle = 'display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:16px 24px;margin:10px 0 14px 0';
+    const lblStyle = 'min-width:120px;font-weight:600;';
+    const selStyle = 'padding:8px 10px;border:1px solid #ddd;border-radius:6px;min-width:200px;background:#fff;';
+    let html=''; fields.forEach(f=>{ html+=`<div class="field-mapping" style="${rowStyle}"><label style="${lblStyle}">${f.label}:</label><select data-field="${f.key}" style="${selStyle}"><option value="">선택 안함</option>${columns.map(col=>`<option value="${col}" ${col.toLowerCase().includes(f.key.toLowerCase())?'selected':''}>${col}</option>`).join('')}</select></div>`; });
     container.innerHTML=html;
     // 안전장치: 잘못 삽입된 CSS 텍스트 노드 제거
     try {

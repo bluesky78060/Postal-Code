@@ -26,13 +26,13 @@
 .label-item { width: 100mm; height: 30mm; border: 0.5px solid #e0e0e0; padding: 3mm; padding-left: calc(3pt + 3px); padding-right: calc(3pt + 3px); box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; font-size: 11pt; line-height: 1.3; overflow: hidden; position: relative; }
 
 /* 주소 */
-.label-address { font-size: 12pt; color: #2c3e50; line-height: 1.3; margin-bottom: 1.5mm; word-wrap: break-word; overflow-wrap: break-word; text-align: left; letter-spacing: 0.5px; }
+.label-address { font-size: 12pt; color: #2c3e50; line-height: 1.3; margin-bottom: 2mm; word-wrap: break-word; overflow-wrap: break-word; text-align: left; letter-spacing: 0.5px; }
 /* 상세주소 */
-.label-detail { font-size: 12pt; color: #34495e; line-height: 1.3; margin-top: 0; margin-bottom: 1.5mm; text-align: left; word-wrap: break-word; overflow-wrap: break-word; }
+.label-detail { font-size: 12pt; color: #34495e; line-height: 1.3; margin-top: 0; margin-bottom: 2mm; text-align: left; word-wrap: break-word; overflow-wrap: break-word; letter-spacing: 0.5px; }
 /* 성명 */
-.label-name { font-size: 13pt; font-weight: bold; color: #2c3e50; text-align: left; letter-spacing: 0.5px; margin-top: 1mm; margin-bottom: 0.5mm; }
+.label-name { font-size: 13pt; font-weight: bold; color: #2c3e50; text-align: left; letter-spacing: 0.5px; margin-top: 1.2mm; margin-bottom: 0.8mm; }
 /* 우편번호 */
-.label-postal-code { font-size: 12pt; font-weight: normal; color: #2c3e50; text-align: right; letter-spacing: 1px; margin-top: 0; }
+.label-postal-code { font-size: 12pt; font-weight: normal; color: #2c3e50; text-align: right; letter-spacing: 1.5px; margin-top: 0.5mm; }
 
 /* 긴 내용 처리 */
 .label-item.long-content .label-address { font-size: 9pt; line-height: 1.1; }
