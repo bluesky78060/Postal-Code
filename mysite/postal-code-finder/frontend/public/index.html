@@ -232,23 +232,27 @@
             color: #2c3e50;
         }
 
+        /* 라벨 필드 설정 간격 (넓게) */
         .field-mapping {
             display: flex;
             align-items: center;
-            margin: 5px 0;
-            gap: 10px;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+            gap: 16px 24px;
+            margin: 10px 0 14px 0;
         }
 
         .field-mapping label {
-            min-width: 80px;
+            min-width: 120px;
             font-weight: 600;
         }
 
         .field-mapping select {
-            padding: 5px;
+            padding: 8px 10px;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            min-width: 150px;
+            border-radius: 6px;
+            min-width: 200px;
+            background: #fff;
         }
 
         @media print {
@@ -356,12 +360,12 @@
                     </div>
                     <div style="margin: 20px 0;">
                         <label>라벨 필드 설정:</label>
-                        <div id="labelFieldMapping" style="margin-top: 10px;">
+                        <div id="labelFieldMapping">
                             <!-- 필드 매핑이 여기에 표시됩니다 -->
                         </div>
-                        <div class="field-mapping" style="margin-top: 10px;">
+                        <div class="field-mapping">
                             <label>성명 뒤 호칭:</label>
-                            <select id="nameSuffix" style="margin-left: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                            <select id="nameSuffix" style="padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px;">
                                 <option value="">없음</option>
                                 <option value="님" selected>님</option>
                                 <option value="귀하">귀하</option>
