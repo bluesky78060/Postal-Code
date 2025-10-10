@@ -120,11 +120,7 @@
     resultDiv.classList.add('hidden');
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { 
-        method: 'POST',
-        headers: { 'x-label-mode': '1' },
-        body: formData 
-      });
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
       const data = await response.json();
       if (data.success) {
         const jobId = data.data.jobId; currentLabelJobId = jobId; checkProgress(jobId);
@@ -157,7 +153,11 @@
 
     try {
       const formData = new FormData(); formData.append('file', file);
-      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { 
+        method: 'POST', 
+        headers: { 'x-label-mode': '1', 'Accept': 'application/json' },
+        body: formData 
+      });
 
       // 응답 헤더 확인 (파일/JSON 분기)
       const contentType = response.headers.get('content-type') || '';
