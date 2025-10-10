@@ -215,3 +215,62 @@
         }
         #labelDataPreview .field-mapping label, .field-mapping label { min-width: 120px; font-weight: 600; }
         #labelDataPreview .field-mapping select, .field-mapping select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px; background: #fff; }
+        /* === 라벨 필드 설정 영역 가독성 개선 === */
+
+        /* 필드 매핑 전체 영역을 2열 그리드로 통일 */
+        #labelFieldMapping {
+          display: grid;
+          grid-template-columns: 120px 1fr; /* 왼쪽 라벨 120px, 오른쪽 컨트롤 1fr */
+          column-gap: 20px;                 /* 라벨과 셀렉트 간격 */
+          row-gap: 14px;                    /* 줄 간격 */
+          margin-top: 10px;
+        }
+
+        /* 기존 field-mapping 래퍼 단순화 */
+        #labelFieldMapping .field-mapping {
+          display: contents; /* label과 select를 직접 그리드에 올림 */
+        }
+
+        /* 라벨 스타일: 폭, 자간, 줄간격 */
+        #labelFieldMapping .field-mapping label {
+          font-weight: 600;
+          color: #333;
+          line-height: 1.8;
+          letter-spacing: 0.2px;
+          align-self: center;
+        }
+
+        /* 셀렉트 박스: 폭 통일, 여백/테두리 개선 */
+        #labelFieldMapping .field-mapping select {
+          width: 280px;
+          max-width: 100%;
+          padding: 8px 10px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          background: #fff;
+          line-height: 1.6;
+          font-size: 15px;
+        }
+
+        /* 성명 뒤 호칭 셀렉트도 같은 폭으로 맞춤 */
+        #nameSuffix {
+          width: 280px !important;
+          padding: 8px 10px !important;
+          border: 1px solid #ddd !important;
+          border-radius: 6px !important;
+          line-height: 1.6 !important;
+          font-size: 15px !important;
+          background: #fff !important;
+          margin-left: 0 !important;
+        }
+
+        /* 기존 .field-mapping 구식 규칙 약화 */
+        .field-mapping {
+          margin: 0 !important;
+          gap: 0 !important;
+        }
+
+        /* 하단 배포 문구 숨김 */
+        #deployInfo {
+          display: none !important;
+        }
