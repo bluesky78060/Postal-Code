@@ -60,6 +60,19 @@
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     if (clickedButton) clickedButton.classList.add('active');
     document.getElementById(tabName).classList.add('active');
+    if (tabName === 'label') {
+      const upProg = document.getElementById('uploadProgress');
+      const upRes = document.getElementById('uploadResult');
+      if (upProg) upProg.classList.add('hidden');
+      if (upRes) { upRes.classList.add('hidden'); upRes.innerHTML=''; }
+    } else if (tabName === 'upload') {
+      const lp = document.getElementById('labelUploadProgress');
+      const ldp = document.getElementById('labelDataPreview');
+      const lpv = document.getElementById('labelPreview');
+      if (lp) lp.classList.add('hidden');
+      if (ldp) ldp.classList.add('hidden');
+      if (lpv) lpv.classList.add('hidden');
+    }
   }
 
   function showResult(element, html, type) {
@@ -276,6 +289,31 @@
     const fields=[ {key:'name',label:'이름'}, {key:'address',label:'주소'}, {key:'detail',label:'상세주소'}, {key:'postalCode',label:'우편번호'} ];
     let html=''; fields.forEach(f=>{ html+=`<div class="field-mapping"><label>${f.label}:</label><select data-field="${f.key}"><option value="">선택 안함</option>${columns.map(col=>`<option value="${col}" ${col.toLowerCase().includes(f.key.toLowerCase())?'selected':''}>${col}</option>`).join('')}</select></div>`; });
     container.innerHTML=html;
+    // 동의어 기반 자동 매핑 보강
+    try {
+      const synonyms = {
+        name: ['성명','이름','name'],
+        address: ['도로명주소','전체주소','address','fulladdress','주소'],
+        detail: ['상세주소','상세','동호','동/호','동 호','동','호'],
+        postalCode: ['우편번호','postalcode','postal_code','postcode','zip','zipcode']
+      };
+      const norm = s => String(s||'').toLowerCase();
+      const best = (cols, keys) => {
+        for (const k of keys) {
+          const nk = norm(k);
+          const hit = cols.find(c => norm(c).includes(nk));
+          if (hit) return hit;
+        }
+        return '';
+      };
+      container.querySelectorAll('select').forEach(sel => {
+        const key = sel.getAttribute('data-field');
+        if (!sel.value) {
+          const pick = best(columns, synonyms[key] || []);
+          if (pick) sel.value = pick;
+        }
+      });
+    } catch(_) {}
     container.querySelectorAll('select').forEach(sel=>{ sel.addEventListener('change',(e)=>{ const field=e.target.getAttribute('data-field'); const column=e.target.value; fieldMappings[field]=column; }); });
     fields.forEach(f=>{ const sel=container.querySelector(`select[data-field="${f.key}"]`); if(sel&&sel.value){ fieldMappings[f.key]=sel.value; } });
   }
