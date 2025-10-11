@@ -236,14 +236,16 @@
 }
 
 /* 라벨 내용이 긴 경우 처리 */
-.label-item.long-content .label-address {
-    font-size: 9pt;
-    line-height: 1.1;
+.label-item.long-content .cell-name,
+.label-item.long-content .cell-address {
+    font-size: 11pt;
 }
-
-.label-item.long-content .label-postal-code {
-    font-size: 12pt;
-    margin-bottom: 1mm;
+.label-item.long-content .cell-detail {
+    font-size: 11pt;
+    line-height: 1.2;
+}
+.label-item.long-content .cell-postal {
+    font-size: 11pt;
 }
 
 /* 빈 라벨 스타일 */
