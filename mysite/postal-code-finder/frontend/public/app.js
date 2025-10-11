@@ -767,14 +767,32 @@
             postalCode = postalCodeIndex >= 0 ? (rowData[postalCodeIndex] ?? '') : '';
           }
 
-          if (name && nameSuffix) name = name + ' ' + nameSuffix;
-          const isLong = `${address}`.length > 25 || `${name}`.length > 18 || `${detail}`.length > 20;
+          // 길이 기준은 테이블 배치에서도 유지하되 여유 있게 조정
+          const isLong = `${address}`.length > 28 || `${name}`.length > 20 || `${detail}`.length > 24;
+
+          // 테이블 기반 2행(이름+주소 / 상세주소+우편번호) + (옵션) 3행: 호칭
+          const tableHtml = `
+            <table class="label-table" role="presentation">
+              <colgroup>
+                <col style="width: 55%" />
+                <col style="width: 45%" />
+              </colgroup>
+              <tbody>
+                <tr>
+                  <td class="cell-name">${name ?? ''}</td>
+                  <td class="cell-address">${address ?? ''}</td>
+                </tr>
+                <tr>
+                  <td class="cell-detail">${detail ?? ''}</td>
+                  <td class="cell-postal">${postalCode ?? ''}</td>
+                </tr>
+                ${nameSuffix ? `<tr><td class=\"cell-suffix\" colspan=\"2\">${nameSuffix}</td></tr>` : ''}
+              </tbody>
+            </table>`;
+
           sheetHtml += `
             <div class="label-item${isLong ? ' long-content' : ''}">
-              <div class="label-address">${address ?? ''}</div>
-              ${detail ? `<div class=\"label-detail\">${detail}</div>` : ''}
-              <div class="label-name">${name ?? ''}</div>
-              <div class="label-postal-code">${postalCode ?? ''}</div>
+              ${tableHtml}
             </div>
           `;
           dataIndex++;
