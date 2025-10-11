@@ -31,5 +31,8 @@
     "korea"
   ],
   "author": "Developer",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
 }
