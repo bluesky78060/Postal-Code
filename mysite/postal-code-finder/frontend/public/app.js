@@ -644,15 +644,13 @@
     const norm = (s) => String(s || '').toLowerCase();
     const isMatch = (col, key) => synonyms[key].some(k => norm(col).includes(norm(k)));
 
-    const rowStyle = 'display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:16px 24px;margin:10px 0 14px 0';
-    const lblStyle = 'min-width:120px;font-weight:600;';
-    const selStyle = 'padding:8px 10px;border:1px solid #ddd;border-radius:6px;min-width:200px;background:#fff;';
     let html = '';
     fields.forEach(field => {
+      const selectId = `labelField-${field.key}`;
       html += `
-        <div class="field-mapping" style="${rowStyle}">
-          <label style="${lblStyle}">${field.label}:</label>
-          <select data-field="${field.key}" style="${selStyle}">
+        <div class="field-mapping">
+          <label for="${selectId}">${field.label}:</label>
+          <select id="${selectId}" data-field="${field.key}">
             <option value="">선택 안함</option>
             ${columns.map(col => `<option value="${col}" ${isMatch(col, field.key) ? 'selected' : ''}>${col}</option>`).join('')}
           </select>
@@ -853,9 +851,17 @@
       : new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
     const nameSuffix = document.getElementById('nameSuffix')?.value || '';
     const suffix = nameSuffix ? `_${nameSuffix}` : '';
-    const newTitle = `labels_${template}_${id}${suffix}`;
+    // 파일명에서 한글/특수문자에 의해 시스템에서 조합형으로 보이는 문제 방지
+    // 1) 우선 정상화(NFKD) 후 2) 영숫자, '-', '_'만 남김 3) 과도한 연속 구분자 정리
+    const rawTitle = `labels_${template}_${id}${suffix}`;
+    const safeTitle = rawTitle
+      .normalize('NFKD')
+      .replace(/[^A-Za-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/-$/g, '')
+      .slice(0, 100); // 너무 긴 파일명 방지
 
-    document.title = newTitle;
+    document.title = safeTitle || 'labels';
 
     const restore = () => {
       document.title = originalTitle;
