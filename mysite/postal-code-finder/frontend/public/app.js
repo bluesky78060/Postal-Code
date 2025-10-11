@@ -851,9 +851,17 @@
       : new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
     const nameSuffix = document.getElementById('nameSuffix')?.value || '';
     const suffix = nameSuffix ? `_${nameSuffix}` : '';
-    const newTitle = `labels_${template}_${id}${suffix}`;
+    // 파일명에서 한글/특수문자에 의해 시스템에서 조합형으로 보이는 문제 방지
+    // 1) 우선 정상화(NFKD) 후 2) 영숫자, '-', '_'만 남김 3) 과도한 연속 구분자 정리
+    const rawTitle = `labels_${template}_${id}${suffix}`;
+    const safeTitle = rawTitle
+      .normalize('NFKD')
+      .replace(/[^A-Za-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/-$/g, '')
+      .slice(0, 100); // 너무 긴 파일명 방지
 
-    document.title = newTitle;
+    document.title = safeTitle || 'labels';
 
     const restore = () => {
       document.title = originalTitle;

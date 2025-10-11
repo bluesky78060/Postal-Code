@@ -851,9 +851,15 @@
       : new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
     const nameSuffix = document.getElementById('nameSuffix')?.value || '';
     const suffix = nameSuffix ? `_${nameSuffix}` : '';
-    const newTitle = `labels_${template}_${id}${suffix}`;
+    const rawTitle = `labels_${template}_${id}${suffix}`;
+    const safeTitle = rawTitle
+      .normalize('NFKD')
+      .replace(/[^A-Za-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/-$/g, '')
+      .slice(0, 100);
 
-    document.title = newTitle;
+    document.title = safeTitle || 'labels';
 
     const restore = () => {
       document.title = originalTitle;
