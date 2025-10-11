@@ -176,8 +176,28 @@
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      const data = await response.json();
+      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        const ct = response.headers.get('content-type') || '';
+        const cd = response.headers.get('content-disposition') || '';
+        if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
+          const blob = await response.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'postal_result.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          progressDiv.classList.add('hidden');
+          showResult(resultDiv, `✅ 처리 파일을 다운로드했습니다.`, 'success');
+          return;
+        } else {
+          throw e;
+        }
+      }
       if (data.success) {
         const jobId = data.data.jobId;
         checkProgress(jobId);
@@ -303,9 +323,29 @@
       const formData = new FormData();
       formData.append('file', file);
 
-      console.log('API 호출:', `${API_BASE}/file/upload`);
-      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
-      const data = await response.json();
+      console.log('API 호출:', `${API_BASE}/file/upload?mode=label`);
+      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        const ct = response.headers.get('content-type') || '';
+        const cd = response.headers.get('content-disposition') || '';
+        if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
+          const blob = await response.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'postal_result.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          console.warn('라벨 모드 JSON 대신 파일 다운로드 응답 수신');
+          document.getElementById('labelUploadProgress').classList.add('hidden');
+          return;
+        } else {
+          throw e;
+        }
+      }
       
       console.log('서버 응답:', data);
       
