@@ -78,114 +78,39 @@
     position: relative;
 }
 
-/* 테이블 기반 라벨 배치 */
-.label-item .label-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-}
-.label-item .label-table td {
-    padding: 0.5mm 0.8mm;
-    vertical-align: middle;
+/* 블록 기반 라벨 배치 */
+.label-address-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8mm;
+    margin-bottom: 1.2mm;
 }
 
-/* 1행: 이름 + 주소 */
-.label-item .cell-name {
-    font-size: 13pt;
-    font-weight: bold;
+.label-address-line {
+    font-size: 12pt;
     color: #2c3e50;
+    line-height: 1.35;
     letter-spacing: 0.5px;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.label-item .cell-address {
-    font-size: 12pt;
-    color: #2c3e50;
-    letter-spacing: 0.5px;
-    text-align: left;
-    overflow-wrap: break-word;
-}
-
-/* 2행: 상세주소 + 우편번호 */
-.label-item .cell-detail {
-    font-size: 12pt;
-    color: #34495e;
-    letter-spacing: 0.5px;
-    text-align: left;
-    overflow-wrap: break-word;
-}
-.label-item .cell-postal {
-    font-size: 12pt;
-    color: #2c3e50;
-    letter-spacing: 1.2px;
-    text-align: right;
-    white-space: nowrap;
-}
-
-/* 3행(옵션): 호칭 단독 라인 */
-.label-item .cell-suffix {
-    font-size: 11pt;
-    color: #2c3e50;
-    text-align: left;
-    padding-top: 0.6mm;
-}
-
-/* 주소 스타일 (첫 번째) */
-.label-address {
-    font-size: 12pt;
-    color: #2c3e50;
-    line-height: 1.3;
-    margin-bottom: 1.5mm;
     word-wrap: break-word;
     overflow-wrap: break-word;
     text-align: left;
-    letter-spacing: 0.5px;
 }
 
-/* 상세주소 (주소 아래 한 줄) */
-.label-detail {
-    font-size: 12pt;
-    color: #34495e;
-    line-height: 1.3;
-    margin-top: 0;
-    margin-bottom: 2mm;
-    text-align: left;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    letter-spacing: 0.5px;
-}
-
-/* 수신인 이름 스타일 (두 번째) */
-.label-name {
+.label-name-line {
     font-size: 13pt;
-    font-weight: bold;
+    font-weight: 700;
     color: #2c3e50;
-    text-align: left;
     letter-spacing: 0.5px;
-    margin-top: 1.2mm;
-    margin-bottom: 0.8mm;
+    text-align: left;
+    margin-bottom: 0.6mm;
 }
 
-/* 우편번호 스타일 (세 번째) */
-.label-postal-code {
+.label-postal-line {
     font-size: 12pt;
-    font-weight: normal;
     color: #2c3e50;
+    letter-spacing: 1.4px;
     text-align: right;
-    letter-spacing: 1.5px;
-    margin-top: 0.5mm;
-}
-
-/* 기타 정보 스타일 */
-.label-extra {
-    font-size: 9pt;
-    color: #7f8c8d;
-    text-align: right;
-    position: absolute;
-    bottom: 2mm;
-    right: 3mm;
+    margin-top: auto;
 }
 
 /* 화면 미리보기용 스타일 */
@@ -236,15 +161,12 @@
 }
 
 /* 라벨 내용이 긴 경우 처리 */
-.label-item.long-content .cell-name,
-.label-item.long-content .cell-address {
+.label-item.long-content .label-address-line,
+.label-item.long-content .label-name-line {
     font-size: 11pt;
+    line-height: 1.25;
 }
-.label-item.long-content .cell-detail {
-    font-size: 11pt;
-    line-height: 1.2;
-}
-.label-item.long-content .cell-postal {
+.label-item.long-content .label-postal-line {
     font-size: 11pt;
 }
 

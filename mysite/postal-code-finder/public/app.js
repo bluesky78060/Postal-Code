@@ -583,6 +583,9 @@
 
     columns.forEach((c) => {
       if (orderedOut.includes(c)) return;
+      const normalizedColumn = norm(c);
+      const previewHide = ['시도', '시도명', 'sido', '시군구', '시군구명', 'sigungu'];
+      if (previewHide.some(pattern => normalizedColumn.includes(norm(pattern)))) return;
       // address/postal 그룹의 중복 후보는 미리보기에서는 제외
       if (inGroup(c, groups.address)) return;
       if (inGroup(c, groups.postal)) return;
@@ -769,31 +772,27 @@
           }
 
           // 라벨 필드 길이에 따라 폰트 축소 여부 결정
-          const isLong = `${address}`.length > 28 || `${name}`.length > 20 || `${detail}`.length > 24;
+          const addressLines = [];
+          if (address) addressLines.push(address);
+          if (detail) addressLines.push(detail);
+          const displayNameParts = [];
+          if (name) displayNameParts.push(name);
+          if (nameSuffix) displayNameParts.push(nameSuffix);
+          const displayName = displayNameParts.join(' ');
+          const combinedAddress = addressLines.join(' ');
+          const isLong = combinedAddress.length > 36 || displayName.length > 20 || `${postalCode}`.length > 8;
 
-          // 테이블 기반 2행(이름+주소 / 상세주소+우편번호) + (옵션) 3행: 호칭
-          const tableHtml = `
-            <table class="label-table" role="presentation">
-              <colgroup>
-                <col style="width: 55%" />
-                <col style="width: 45%" />
-              </colgroup>
-              <tbody>
-                <tr>
-                  <td class="cell-name">${name ?? ''}</td>
-                  <td class="cell-address">${address ?? ''}</td>
-                </tr>
-                <tr>
-                  <td class="cell-detail">${detail ?? ''}</td>
-                  <td class="cell-postal">${postalCode ?? ''}</td>
-                </tr>
-                ${nameSuffix ? `<tr><td class=\"cell-suffix\" colspan=\"2\">${nameSuffix}</td></tr>` : ''}
-              </tbody>
-            </table>`;
+          const addressBlock = addressLines.length
+            ? addressLines.map(line => `<div class="label-address-line">${line}</div>`).join('')
+            : '<div class="label-address-line"></div>';
 
           sheetHtml += `
             <div class="label-item${isLong ? ' long-content' : ''}">
-              ${tableHtml}
+              <div class="label-address-block">
+                ${addressBlock}
+              </div>
+              <div class="label-name-line">${displayName}</div>
+              <div class="label-postal-line">${postalCode ?? ''}</div>
             </div>
           `;
           dataIndex++;
