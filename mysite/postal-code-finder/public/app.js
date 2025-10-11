@@ -490,8 +490,11 @@
     const tableHtml = createDataTable(displayData, previewColumns);
     document.getElementById('labelDataTable').innerHTML = tableHtml;
 
-    // 필드 매핑 UI 생성
-    createFieldMappings(previewColumns);
+    // 필드 매핑 UI 생성 (원본 컬럼 전체를 기반으로 하여 누락 방지)
+    const mappingColumns = Array.isArray(columns) && columns.length
+      ? Array.from(new Set(columns.map(col => (col ?? '').toString().trim()))).filter(Boolean)
+      : previewColumns;
+    createFieldMappings(mappingColumns);
 
     // 미리보기 영역 표시
     document.getElementById('labelDataPreview').classList.remove('hidden');
