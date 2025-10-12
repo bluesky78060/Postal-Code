@@ -92,11 +92,12 @@
     if (typeof status?.estimatedRemainingMs === 'number') {
       return formatEtaMs(status.estimatedRemainingMs);
     }
-    if (!status?.startTime || !status?.processed || !status?.total || status.processed === 0) return '';
+    const totalTarget = status.total ?? status.totalOriginal ?? status.maxRows;
+    if (!status?.startTime || !status?.processed || !totalTarget || status.processed === 0) return '';
     const start = new Date(status.startTime).getTime();
     const elapsed = Date.now() - start;
     if (elapsed <= 0) return '';
-    const remainingItems = Math.max(status.total - status.processed, 0);
+    const remainingItems = Math.max(totalTarget - status.processed, 0);
     if (remainingItems <= 0) return '';
     const ratePerItem = elapsed / status.processed;
     if (!Number.isFinite(ratePerItem) || ratePerItem <= 0) return '';
@@ -110,6 +111,8 @@
     const etaEl = document.getElementById(isUpload ? 'progressEta' : 'labelProgressEta');
     const stepsContainer = isUpload ? 'uploadProgressSteps' : 'labelProgressSteps';
 
+    const totalTarget = status.total ?? status.totalOriginal ?? status.maxRows ?? 0;
+    
     const percent = Math.max(0, Math.min(100, status.progress ?? 0));
     if (fill) fill.style.width = percent + '%';
 
@@ -123,8 +126,13 @@
         }
       } else if (status.status === 'error') {
         message = status.error ? `오류: ${status.error}` : '처리 중 오류가 발생했습니다.';
-      } else if (typeof status.processed === 'number' && typeof status.total === 'number') {
-        message = `처리 중... (${status.processed}/${status.total})`;
+      } else if (typeof status.processed === 'number') {
+        const denom = totalTarget || status.total || status.maxRows || 0;
+        if (denom) {
+          message = `처리 중... (${status.processed}/${denom})`;
+        } else {
+          message = `처리 중... (${status.processed})`;
+        }
       } else {
         message = '처리 중...';
       }

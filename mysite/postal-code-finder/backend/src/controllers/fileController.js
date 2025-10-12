@@ -128,7 +128,7 @@ class FileController {
       // 중복 데이터 제거
       setStepStatus(jobId, 'dedupe', 'in-progress');
       const deduplicateResult = excelService.removeDuplicates(data);
-      const processedData = deduplicateResult.data || data;
+      const processedData = data; // 원본 그대로 사용하여 중복 행도 유지
       setStepStatus(jobId, 'dedupe', 'done');
       
       // 헤더 찾기
@@ -139,7 +139,8 @@ class FileController {
         throw new Error('주소 컬럼을 찾을 수 없습니다. (주소, 주소지, address 등의 컬럼명을 사용해주세요)');
       }
       
-      let rows = processedData.slice(1).filter(row => row[addressColumnIndex]); // 빈 주소 행 제외
+      const allRows = processedData.slice(1).filter(row => row[addressColumnIndex]); // 빈 주소 행 제외
+      let rows = allRows;
       const maxRows = Number(config?.upload?.maxRows) || 300;
       let truncatedCount = 0;
       if (rows.length > maxRows) {
@@ -189,7 +190,8 @@ class FileController {
         total,
         truncatedCount,
         addressColumnIndex,
-        headers: headersOut
+        headers: headersOut,
+        totalOriginal: allRows.length
       });
       
       const results = [];
@@ -350,6 +352,7 @@ class FileController {
         startTime: job.startTime,
         truncatedCount: job.truncatedCount || 0,
         maxRows: job.maxRows || (Number(config?.upload?.maxRows) || 300),
+        totalOriginal: job.totalOriginal || job.total || 0,
         steps: job.steps || cloneSteps()
       };
 
