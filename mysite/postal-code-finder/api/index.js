@@ -701,7 +701,43 @@ app.get('/api/file/download/:jobId', (req, res) => {
     try {
       // 엑셀 파일 생성
       const XLSX = require('xlsx');
-      
+      // 상세주소 추출 유틸(간단 버전)
+      function splitAddressDetail(address) {
+        if (!address || typeof address !== 'string') return { main: '', detail: '' };
+        let main = String(address).trim();
+        const detailParts = [];
+        // 괄호 안 내용 상세로 이동
+        main = main.replace(/\(([^)]+)\)/g, (_, inner) => { const t = inner.trim(); if (t) detailParts.push(t); return ''; });
+        // 콤마 뒤 동/호 패턴 이동
+        const segs = main.split(',').map(s => s.trim()).filter(Boolean);
+        if (segs.length > 1) {
+          const last = segs[segs.length - 1];
+          if (/\d/.test(last) && /(동|호|층)/.test(last)) {
+            detailParts.push(last);
+            segs.pop();
+            main = segs.join(', ');
+          }
+        }
+        // 끝부분 토큰에서 동/호/층 추출
+        const tokens = main.split(' ').filter(Boolean);
+        const tail = [];
+        while (tokens.length) {
+          const tk = tokens[tokens.length - 1];
+          if (/\d/.test(tk) && /(동|호|층)$/i.test(tk)) { tail.unshift(tk); tokens.pop(); continue; }
+          if (/^[A-Za-z가-힣]+동$/i.test(tk) && tail.length) { tail.unshift(tk); tokens.pop(); continue; }
+          break;
+        }
+        if (tail.length) { detailParts.push(tail.join(' ').trim()); main = tokens.join(' ').trim(); }
+        // 하이픈 패턴 (101-1203 등)
+        if (!detailParts.length) {
+          const m = main.match(/(?:\s|^)([A-Za-z가-힣]?\d{1,3}-\d{1,4}(?:\s*(?:호|층))?)\s*$/);
+          if (m && m[1]) { detailParts.push(m[1].trim()); main = main.slice(0, m.index).trim(); }
+        }
+        const detail = detailParts.join(' ').replace(/\s{2,}/g, ' ').trim();
+        main = main.replace(/\s{2,}/g, ' ').trim();
+        return { main, detail };
+      }
+
       console.log('Generating Excel file for jobId:', jobId);
       console.log('Job data:', { 
         headersLength: job.headers?.length, 
@@ -710,21 +746,34 @@ app.get('/api/file/download/:jobId', (req, res) => {
       });
       
       // 안전한 헤더 처리
-      const safeHeaders = Array.isArray(job.headers) ? job.headers : [];
-      
+      const originalHeaders = Array.isArray(job.headers) ? job.headers : [];
+      const norm = s => String(s || '').toLowerCase().replace(/[\s_\//]/g, '');
+      const isAdminHeader = h => {
+        const n = norm(h);
+        return n.includes('시도') || n.includes('sido') || n.includes('시군구') || n.includes('sigungu') || n.includes('광역시') || n.includes('특별시');
+      };
+      // 시도/시군구 제거
+      const filteredHeaders = originalHeaders.filter(h => !isAdminHeader(h));
+      // 상세주소 컬럼 존재여부 확인
+      const detailHeaderIndex = originalHeaders.findIndex(h => {
+        const n = norm(h);
+        return n.includes('상세주소') || n.includes('세부주소') || n.includes('동호') || n.includes('호수') || n.includes('호실');
+      });
+      const hasDetailHeader = detailHeaderIndex !== -1;
+      // 주소 컬럼 인덱스(업로드 시 저장)
+      const addressIndex = typeof job.addressColumnIndex === 'number' ? job.addressColumnIndex : originalHeaders.findIndex(h => String(h).includes('주소'));
+
       // 기존 컬럼 중에서 중복될 수 있는 컬럼들 확인
-      const existingColumns = safeHeaders.map(h => String(h).toLowerCase());
+      const existingColumns = filteredHeaders.map(h => String(h).toLowerCase());
       const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
       const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
-      const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
-      const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+      const hasDetail = existingColumns.some(col => col.includes('상세주소'));
 
       // 새로 추가할 컬럼들만 선별
-      const newHeaders = [...safeHeaders];
+      const newHeaders = [...filteredHeaders];
+      if (!hasDetail) newHeaders.push('상세주소');
       if (!hasPostalCode) newHeaders.push('우편번호');
       if (!hasFullAddress) newHeaders.push('도로명주소');
-      if (!hasSido) newHeaders.push('시도');
-      if (!hasSigungu) newHeaders.push('시군구');
       
       // 결과 데이터를 엑셀 형식으로 변환
       const resultData = [newHeaders];
@@ -733,28 +782,48 @@ app.get('/api/file/download/:jobId', (req, res) => {
       if (Array.isArray(job.rows)) {
         job.rows.forEach((row, index) => {
           const result = job.results?.find(r => r.row === index + 2);
-          const newRow = Array.isArray(row) ? [...row] : Object.values(row || {}); // 배열이 아닌 경우 대응
-          
-          // 헤더와 행의 길이 맞춤
-          while (newRow.length < safeHeaders.length) {
-            newRow.push('');
+          const rowArray = Array.isArray(row) ? row : Object.values(row || {});
+          // 기존 필드에서 시도/시군구 제거된 순서대로 값 복사
+          const baseOut = filteredHeaders.map(h => {
+            const idx = originalHeaders.indexOf(h);
+            return idx >= 0 ? (rowArray[idx] ?? '') : '';
+          });
+
+          // 상세주소 계산: 기존 상세주소가 있으면 사용, 없으면 주소 파싱/동/호 조합
+          let detailValue = '';
+          if (hasDetailHeader) {
+            const v = rowArray[detailHeaderIndex];
+            detailValue = (v && String(v).trim()) ? String(v).trim() : '';
           }
-          
-          // 중복되지 않는 컬럼들만 추가
+          if (!detailValue) {
+            const addr = addressIndex >= 0 ? (rowArray[addressIndex] || '') : '';
+            const { detail } = splitAddressDetail(addr);
+            detailValue = detail || '';
+          }
+          // 동/호 개별 컬럼 조합 (보조)
+          if (!detailValue) {
+            const dongIndex = originalHeaders.findIndex(h => /(^|[^가-힣])동$|dong$/i.test(norm(h)) || norm(h).endsWith('동'));
+            const hoIndex = originalHeaders.findIndex(h => norm(h).endsWith('호') || /hosu|room|unit/i.test(norm(h)));
+            const parts = [];
+            const dv = dongIndex >= 0 ? (rowArray[dongIndex] ?? '') : '';
+            const hv = hoIndex >= 0 ? (rowArray[hoIndex] ?? '') : '';
+            if (dv && String(dv).trim()) parts.push(`${String(dv).trim()}동`);
+            if (hv && String(hv).trim()) parts.push(`${String(hv).trim()}호`);
+            if (parts.length) detailValue = parts.join(' ');
+          }
+
+          // 추가 컬럼 채우기
+          const extras = [];
+          if (!hasDetail) extras.push(detailValue || '');
           if (result) {
-            if (!hasPostalCode) newRow.push(result.postalCode || '');
-            if (!hasFullAddress) newRow.push(result.fullAddress || '');
-            if (!hasSido) newRow.push(result.sido || '');
-            if (!hasSigungu) newRow.push(result.sigungu || '');
+            if (!hasPostalCode) extras.push(result.postalCode || '');
+            if (!hasFullAddress) extras.push(result.fullAddress || '');
           } else {
-            // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
-            if (!hasPostalCode) newRow.push('');
-            if (!hasFullAddress) newRow.push('');
-            if (!hasSido) newRow.push('');
-            if (!hasSigungu) newRow.push('');
+            if (!hasPostalCode) extras.push('');
+            if (!hasFullAddress) extras.push('');
           }
-          
-          resultData.push(newRow);
+
+          resultData.push([...baseOut, ...extras]);
         });
       }
 
