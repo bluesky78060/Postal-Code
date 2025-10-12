@@ -180,6 +180,59 @@ class AddressParser {
     
     return suggestions.slice(0, 5); // 상위 5개만 반환
   }
+
+  splitAddressDetail(address) {
+    if (!address || typeof address !== 'string') {
+      return { main: '', detail: '' };
+    }
+
+    let main = String(address).trim();
+    const detailParts = [];
+
+    // 괄호 안의 정보는 상세로 이동
+    main = main.replace(/\(([^)]+)\)/g, (_, inner) => {
+      const clean = inner.trim();
+      if (clean) detailParts.push(clean);
+      return '';
+    });
+
+    // 쉼표 이후에 오는 동/호 정보는 상세로 이동
+    const commaSegments = main.split(',').map(seg => seg.trim()).filter(Boolean);
+    if (commaSegments.length > 1) {
+      const last = commaSegments[commaSegments.length - 1];
+      if (/\d/.test(last) && /(동|호|층)/.test(last)) {
+        detailParts.push(last);
+        commaSegments.pop();
+        main = commaSegments.join(', ').trim();
+      }
+    }
+
+    // 끝부분에 위치한 동/호/층 정보 추출
+    const tokens = main.split(' ').filter(Boolean);
+    const tailTokens = [];
+    while (tokens.length) {
+      const token = tokens[tokens.length - 1];
+      if (/\d/.test(token) && /(동|호|층)$/i.test(token)) {
+        tailTokens.unshift(token);
+        tokens.pop();
+        continue;
+      }
+      if (/^[A-Za-z가-힣]+동$/i.test(token) && tailTokens.length) {
+        tailTokens.unshift(token);
+        tokens.pop();
+        continue;
+      }
+      break;
+    }
+    if (tailTokens.length) {
+      detailParts.push(tailTokens.join(' ').trim());
+      main = tokens.join(' ').trim();
+    }
+
+    main = main.replace(/\s{2,}/g, ' ').trim();
+    const detail = detailParts.join(' ').replace(/\s{2,}/g, ' ').trim();
+    return { main, detail };
+  }
 }
 
 module.exports = new AddressParser();

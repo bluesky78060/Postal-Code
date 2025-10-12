@@ -22,6 +22,133 @@
   }
   console.log('[App] Using API_BASE:', API_BASE);
 
+  const PROGRESS_STEP_TEMPLATE = [
+    { key: 'upload', label: '파일 업로드' },
+    { key: 'dedupe', label: '중복 제거' },
+    { key: 'lookup', label: '우편번호 조회' },
+    { key: 'export', label: '엑셀 생성' }
+  ];
+
+  const cloneProgressSteps = (activeKey = null) => PROGRESS_STEP_TEMPLATE.map(step => {
+    let status = 'pending';
+    if (step.key === activeKey) {
+      status = 'in-progress';
+    } else if (step.key === 'upload' && activeKey !== 'upload') {
+      status = 'done';
+    }
+    return { ...step, status };
+  });
+
+  function renderProgressSteps(containerId, steps) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const existingKeys = Array.from(container.querySelectorAll('li')).map(li => li.dataset.key);
+    const newKeys = steps.map(step => step.key);
+    if (existingKeys.length === newKeys.length && existingKeys.every((key, idx) => key === newKeys[idx])) {
+      return;
+    }
+    container.innerHTML = steps.map(step => `
+      <li data-key="${step.key}" class="${step.status || 'pending'}">
+        <span class="step-box"></span>
+        <span class="step-label">${step.label}</span>
+      </li>
+    `).join('');
+  }
+
+  function updateProgressSteps(containerId, steps) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    steps.forEach(step => {
+      const li = container.querySelector(`li[data-key="${step.key}"]`);
+      if (!li) return;
+      li.classList.remove('pending', 'in-progress', 'done', 'error');
+      li.classList.add(step.status || 'pending');
+      const box = li.querySelector('.step-box');
+      if (!box) return;
+      if (step.status === 'done') {
+        box.textContent = '✓';
+      } else if (step.status === 'in-progress') {
+        box.textContent = '…';
+      } else if (step.status === 'error') {
+        box.textContent = '⚠';
+      } else {
+        box.textContent = '';
+      }
+    });
+  }
+
+  function formatEtaMs(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) return '';
+    const totalSeconds = Math.round(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) {
+      return `예상 남은 시간 약 ${minutes}분${seconds ? ` ${seconds}초` : ''}`;
+    }
+    return `예상 남은 시간 약 ${seconds}초`;
+  }
+
+  function deriveEtaFromStatus(status) {
+    if (typeof status?.estimatedRemainingMs === 'number') {
+      return formatEtaMs(status.estimatedRemainingMs);
+    }
+    if (!status?.startTime || !status?.processed || !status?.total || status.processed === 0) return '';
+    const start = new Date(status.startTime).getTime();
+    const elapsed = Date.now() - start;
+    if (elapsed <= 0) return '';
+    const remainingItems = Math.max(status.total - status.processed, 0);
+    if (remainingItems <= 0) return '';
+    const ratePerItem = elapsed / status.processed;
+    if (!Number.isFinite(ratePerItem) || ratePerItem <= 0) return '';
+    return formatEtaMs(remainingItems * ratePerItem);
+  }
+
+  function updateProgressCard(kind, status = {}, fallbackText = '') {
+    const isUpload = kind === 'upload';
+    const fill = document.getElementById(isUpload ? 'progressFill' : 'labelProgressFill');
+    const textEl = document.getElementById(isUpload ? 'progressText' : 'labelProgressText');
+    const etaEl = document.getElementById(isUpload ? 'progressEta' : 'labelProgressEta');
+    const stepsContainer = isUpload ? 'uploadProgressSteps' : 'labelProgressSteps';
+
+    const percent = Math.max(0, Math.min(100, status.progress ?? 0));
+    if (fill) fill.style.width = percent + '%';
+
+    let message = fallbackText;
+    if (!message) {
+      if (status.status === 'completed') {
+        if (status.truncatedCount) {
+          message = `처리 완료! (제한 ${status.maxRows || 0}건, ${status.truncatedCount}건 제외)`;
+        } else {
+          message = '처리 완료!';
+        }
+      } else if (status.status === 'error') {
+        message = status.error ? `오류: ${status.error}` : '처리 중 오류가 발생했습니다.';
+      } else if (typeof status.processed === 'number' && typeof status.total === 'number') {
+        message = `처리 중... (${status.processed}/${status.total})`;
+      } else {
+        message = '처리 중...';
+      }
+    }
+    if (textEl) textEl.textContent = message;
+
+    const etaText = deriveEtaFromStatus(status);
+    if (etaEl) {
+      if (etaText) {
+        etaEl.textContent = etaText;
+        etaEl.classList.remove('hidden');
+      } else {
+        etaEl.textContent = '';
+        etaEl.classList.add('hidden');
+      }
+    }
+
+    const steps = Array.isArray(status.steps) && status.steps.length
+      ? status.steps
+      : cloneProgressSteps(status.status === 'processing' ? 'dedupe' : null);
+    renderProgressSteps(stepsContainer, steps);
+    updateProgressSteps(stepsContainer, steps);
+  }
+
   // API 연결 상태 표시
   async function checkApiHealth() {
     const statusEl = document.getElementById('apiStatus');
@@ -65,6 +192,7 @@
   let labelData = null;
   let fieldMappings = {};
   let currentLabelJobId = null;
+  let lastLabelStatus = null;
   // 모달 포커스 관리
   let lastFocusedElement = null;
   let modalKeydownHandler = null;
@@ -171,6 +299,7 @@
 
     progressDiv.classList.remove('hidden');
     resultDiv.classList.add('hidden');
+    updateProgressCard('upload', { progress: 0, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 업로드 중...');
 
     const formData = new FormData();
     formData.append('file', file);
@@ -227,13 +356,15 @@
       const data = await response.json();
       if (data.success) {
         const status = data.data;
-        updateProgress(status.progress, `처리 중... (${status.processed}/${status.total})`);
+        updateProgressCard('upload', status);
         if (status.status === 'completed') {
           document.getElementById('uploadProgress').classList.add('hidden');
+          const truncatedNote = status.truncatedCount ? `<p class="progress-note">⚠️ 최대 ${status.maxRows || 0}건까지만 처리되어 ${status.truncatedCount}건은 제외되었습니다.</p>` : '';
           showResult(document.getElementById('uploadResult'), `
             <h3>✅ 파일 처리가 완료되었습니다!</h3>
             <p><strong>처리된 행:</strong> ${status.processed}개</p>
             <p><strong>오류 행:</strong> ${status.errors?.length || 0}개</p>
+            ${truncatedNote}
             <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
               <button class="btn" data-download-id="${jobId}">📥 다운로드</button>
               <button class="btn" data-reset-upload>↩️ 초기화</button>
@@ -262,11 +393,6 @@
     }
   }
 
-  function updateProgress(percent, text) {
-    document.getElementById('progressFill').style.width = percent + '%';
-    document.getElementById('progressText').textContent = text;
-  }
-
   function downloadFile(jobId) {
     window.open(`${API_BASE}/file/download/${jobId}`, '_blank');
   }
@@ -289,6 +415,13 @@
     progressDiv.classList.add('hidden');
     document.getElementById('progressFill').style.width = '0%';
     document.getElementById('progressText').textContent = '처리 중...';
+    const etaEl = document.getElementById('progressEta');
+    if (etaEl) {
+      etaEl.textContent = '';
+      etaEl.classList.add('hidden');
+    }
+    const stepList = document.getElementById('uploadProgressSteps');
+    if (stepList) stepList.innerHTML = '';
     // Hide result
     const resultDiv = document.getElementById('uploadResult');
     resultDiv.classList.add('hidden');
@@ -312,12 +445,13 @@
       alert('엑셀 파일(.xls, .xlsx)만 업로드 가능합니다.');
       return;
     }
+    lastLabelStatus = null;
 
     console.log('파일 처리 시작:', file.name);
     
     // 진행 상황 표시
     document.getElementById('labelUploadProgress').classList.remove('hidden');
-    updateLabelProgress(0, '파일 업로드 중...');
+    updateProgressCard('label', { progress: 0, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 업로드 중...');
 
     try {
       const formData = new FormData();
@@ -353,7 +487,7 @@
         const jobId = data.data.jobId;
         currentLabelJobId = jobId;
         console.log('JobID:', jobId);
-        updateLabelProgress(10, '파일 처리 중...');
+        updateProgressCard('label', { progress: 10, processed: 0, total: 0, steps: cloneProgressSteps('dedupe') }, '파일 처리 중...');
         await waitForLabelProcessing(jobId);
       } else {
         document.getElementById('labelUploadProgress').classList.add('hidden');
@@ -366,6 +500,7 @@
       
       // 오류 발생 시 샘플 데이터로 대체
       console.log('샘플 데이터로 대체');
+      lastLabelStatus = null;
       labelData = generateSampleData();
       showLabelDataPreview();
     }
@@ -378,11 +513,11 @@
       
       if (data.success) {
         const status = data.data;
-        updateLabelProgress(status.progress, `처리 중... (${status.processed}/${status.total})`);
+        updateProgressCard('label', status);
         
         if (status.status === 'completed') {
-          updateLabelProgress(100, '처리 완료!');
           document.getElementById('labelUploadProgress').classList.add('hidden');
+          lastLabelStatus = status;
           // 처리된 파일에서 데이터 추출
           await loadLabelData(jobId);
         } else if (status.status === 'processing') {
@@ -394,13 +529,9 @@
       }
     } catch (error) {
       document.getElementById('labelUploadProgress').classList.add('hidden');
+      lastLabelStatus = null;
       alert('상태 확인 중 오류: ' + error.message);
     }
-  }
-
-  function updateLabelProgress(percent, text) {
-    document.getElementById('labelProgressFill').style.width = percent + '%';
-    document.getElementById('labelProgressText').textContent = text;
   }
 
   async function loadLabelData(jobId) {
@@ -490,11 +621,22 @@
     const tableHtml = createDataTable(displayData, previewColumns);
     document.getElementById('labelDataTable').innerHTML = tableHtml;
 
-    // 필드 매핑 UI 생성 (미리보기와 동일한 컬럼만 제공)
+    // 필드 매핑 UI 생성 (미리보기와 동일한 컬럼만 제공해 혼동 방지)
     const mappingColumns = Array.isArray(previewColumns) && previewColumns.length
       ? previewColumns
       : (Array.isArray(columns) ? columns : []);
     createFieldMappings(mappingColumns);
+
+    const noteEl = document.getElementById('labelPreviewNote');
+    if (noteEl) {
+      if (lastLabelStatus?.truncatedCount) {
+        noteEl.innerHTML = `⚠️ 최대 ${lastLabelStatus.maxRows || 0}건까지만 처리되어 ${lastLabelStatus.truncatedCount}건은 제외되었습니다.`;
+        noteEl.classList.remove('hidden');
+      } else {
+        noteEl.textContent = '';
+        noteEl.classList.add('hidden');
+      }
+    }
 
     // 미리보기 영역 표시
     document.getElementById('labelDataPreview').classList.remove('hidden');
@@ -505,7 +647,7 @@
     if (!Array.isArray(columns) || columns.length === 0) return columns || [];
 
     const lower = (s) => String(s || '').toLowerCase();
-    const norm = (s) => lower(s).replace(/[\s_]/g, '');
+    const norm = (s) => lower(s).replace(/[\s_\/]/g, '');
 
     const groups = {
       postal: ['우편번호', 'postalcode', 'postal_code', 'postcode', 'zip', 'zipcode'],
@@ -771,7 +913,7 @@
             postalCode = postalCodeIndex >= 0 ? (rowData[postalCodeIndex] ?? '') : '';
           }
 
-          // 라벨 필드 길이에 따라 폰트 축소 여부 결정
+          // 길이 기준은 테이블 배치에서도 유지하되 여유 있게 조정
           const addressLines = [];
           if (address) addressLines.push(address);
           if (detail) addressLines.push(detail);
@@ -853,13 +995,15 @@
       : new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
     const nameSuffix = document.getElementById('nameSuffix')?.value || '';
     const suffix = nameSuffix ? `_${nameSuffix}` : '';
+    // 파일명에서 한글/특수문자에 의해 시스템에서 조합형으로 보이는 문제 방지
+    // 1) 우선 정상화(NFKD) 후 2) 영숫자, '-', '_'만 남김 3) 과도한 연속 구분자 정리
     const rawTitle = `labels_${template}_${id}${suffix}`;
     const safeTitle = rawTitle
       .normalize('NFKD')
       .replace(/[^A-Za-z0-9_-]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/-$/g, '')
-      .slice(0, 100);
+      .slice(0, 100); // 너무 긴 파일명 방지
 
     document.title = safeTitle || 'labels';
 
@@ -954,6 +1098,11 @@
     if (fmap) fmap.innerHTML = '';
     if (sheet) sheet.innerHTML = '';
     if (modalSheet) modalSheet.innerHTML = '';
+    const noteEl = document.getElementById('labelPreviewNote');
+    if (noteEl) {
+      noteEl.textContent = '';
+      noteEl.classList.add('hidden');
+    }
 
     // 모달 닫기
     const modal = document.getElementById('labelModal');
@@ -965,7 +1114,8 @@
     if (appContainer) appContainer.removeAttribute('inert');
     
     // 진행 상황 초기화
-    updateLabelProgress(0, '처리 중...');
+    updateProgressCard('label', { progress: 0, processed: 0, total: 0, steps: cloneProgressSteps() }, '처리 중...');
+    lastLabelStatus = null;
   }
 
   // Event wiring
@@ -1082,6 +1232,7 @@
     
     // 샘플 데이터 로드 버튼
     document.getElementById('btnLoadSampleData').addEventListener('click', () => {
+      lastLabelStatus = null;
       labelData = generateSampleData();
       showLabelDataPreview();
     });

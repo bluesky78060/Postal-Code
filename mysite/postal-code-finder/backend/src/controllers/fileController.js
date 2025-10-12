@@ -9,6 +9,31 @@ const config = require('../config');
 // 진행 중인 작업 저장소 (실제 서비스에서는 Redis 등 사용)
 const processingJobs = new Map();
 
+const STEP_TEMPLATE = [
+  { key: 'upload', label: '파일 업로드', status: 'done' },
+  { key: 'dedupe', label: '중복 제거', status: 'pending' },
+  { key: 'lookup', label: '우편번호 조회', status: 'pending' },
+  { key: 'export', label: '엑셀 생성', status: 'pending' }
+];
+
+const cloneSteps = () => STEP_TEMPLATE.map(step => ({ ...step }));
+
+const updateJob = (jobId, updater) => {
+  const prev = processingJobs.get(jobId) || {};
+  const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+  processingJobs.set(jobId, next);
+  return next;
+};
+
+const setStepStatus = (jobId, key, status) => {
+  updateJob(jobId, (prev) => {
+    const steps = (prev.steps || cloneSteps()).map(step => (
+      step.key === key ? { ...step, status } : step
+    ));
+    return { ...prev, steps };
+  });
+};
+
 // 작업 정리를 위한 설정 (환경설정 사용)
 const JOB_CLEANUP_INTERVAL = Number(config?.jobs?.cleanupInterval) || 60 * 60 * 1000;
 const JOB_RETENTION_TIME = Number(config?.jobs?.retentionTime) || 24 * 60 * 60 * 1000;
@@ -45,22 +70,26 @@ class FileController {
       const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
       
       // 작업 상태 초기화
-      processingJobs.set(jobId, {
+      updateJob(jobId, {
         status: 'processing',
         progress: 0,
         total: 0,
         processed: 0,
         errors: [],
         startTime: new Date(),
-        originalFilename: req.file.originalname
+        originalFilename: req.file.originalname,
+        steps: cloneSteps(),
+        truncatedCount: 0,
+        maxRows: Number(config?.upload?.maxRows) || 300
       });
       
       // 비동기로 파일 처리 시작
       this.processExcelFile(filePath, jobId).catch(error => {
         console.error('파일 처리 오류:', error);
-        const prev = processingJobs.get(jobId) || {};
-        processingJobs.set(jobId, {
-          ...prev,
+        setStepStatus(jobId, 'dedupe', 'error');
+        setStepStatus(jobId, 'lookup', 'error');
+        setStepStatus(jobId, 'export', 'error');
+        updateJob(jobId, {
           status: 'error',
           error: String(error?.message || error),
           endTime: new Date()
@@ -97,8 +126,10 @@ class FileController {
       }
       
       // 중복 데이터 제거
+      setStepStatus(jobId, 'dedupe', 'in-progress');
       const deduplicateResult = excelService.removeDuplicates(data);
       const processedData = deduplicateResult.data || data;
+      setStepStatus(jobId, 'dedupe', 'done');
       
       // 헤더 찾기
       const headers = processedData[0];
@@ -108,7 +139,13 @@ class FileController {
         throw new Error('주소 컬럼을 찾을 수 없습니다. (주소, 주소지, address 등의 컬럼명을 사용해주세요)');
       }
       
-      const rows = processedData.slice(1).filter(row => row[addressColumnIndex]); // 빈 주소 행 제외
+      let rows = processedData.slice(1).filter(row => row[addressColumnIndex]); // 빈 주소 행 제외
+      const maxRows = Number(config?.upload?.maxRows) || 300;
+      let truncatedCount = 0;
+      if (rows.length > maxRows) {
+        truncatedCount = rows.length - maxRows;
+        rows = rows.slice(0, maxRows);
+      }
       const total = rows.length;
       
       // 중복 제거 정보 로그
@@ -116,20 +153,50 @@ class FileController {
         console.log(`중복 제거 완료: ${deduplicateResult.duplicateCount}개 중복 행 제거 (${deduplicateResult.originalCount} → ${deduplicateResult.uniqueCount})`);
       }
       
-      // 작업 정보 업데이트
-      const headersOut = [...headers, '우편번호'];
+      const normalizeHeader = (header) => String(header || '').toLowerCase().replace(/[\s_\/]/g, '');
+      const shouldRemoveHeader = (header) => {
+        const norm = normalizeHeader(header);
+        const removalKeys = ['시도', '시도명', 'sido', 'province', '특별시', '광역시', '특별자치도', '자치도', 'sigungu', '시군구', '시군구명', '군구'];
+        return removalKeys.some(key => norm === key);
+      };
+      const detailKeywords = ['상세주소', '상세', '세부주소', '동호', '동호수', '호수', '호실', '아파트상세'];
+      const detailColumnIndex = headers.findIndex(header => {
+        const norm = normalizeHeader(header);
+        return detailKeywords.some(key => norm === key || norm.includes(key));
+      });
+
+      const headerPlan = [];
+      headers.forEach((header, idx) => {
+        if (shouldRemoveHeader(header)) return;
+        if (idx === addressColumnIndex) {
+          const label = header && String(header).trim() ? String(header).trim() : '주소';
+          headerPlan.push({ type: 'address', header: label, index: idx });
+          if (detailColumnIndex === -1) {
+            headerPlan.push({ type: 'detail-auto', header: '상세주소', index: idx });
+          }
+        } else if (idx === detailColumnIndex) {
+          headerPlan.push({ type: 'detail', header: '상세주소', index: idx });
+        } else {
+          headerPlan.push({ type: 'keep', header: header && String(header).trim() ? String(header).trim() : `열${idx + 1}`, index: idx });
+        }
+      });
+
+      const headersOut = headerPlan.map(item => item.header);
+      headersOut.push('우편번호');
       if (config?.output?.includeRoadAddress) headersOut.push('도로명주소');
-      processingJobs.set(jobId, {
-        ...job,
+
+      updateJob(jobId, {
         total,
+        truncatedCount,
         addressColumnIndex,
-        headers: headersOut // 우편번호(+ 도로명주소) 컬럼 추가
+        headers: headersOut
       });
       
       const results = [];
       const errors = [];
       
       // 각 행 처리
+      setStepStatus(jobId, 'lookup', 'in-progress');
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const address = row[addressColumnIndex];
@@ -143,6 +210,20 @@ class FileController {
           continue;
         }
         
+        const { main: mainAddress, detail: derivedDetail } = addressParser.splitAddressDetail(address);
+        const baseRow = headerPlan.map(plan => {
+          if (plan.type === 'address') {
+            return mainAddress || (row[plan.index] ?? '');
+          }
+          if (plan.type === 'detail') {
+            const existing = row[plan.index];
+            return (existing && String(existing).trim()) ? existing : derivedDetail;
+          }
+          if (plan.type === 'detail-auto') {
+            return derivedDetail;
+          }
+          return row[plan.index];
+        });
         try {
           const normalizedAddress = addressParser.normalizeAddress(address);
           const result = await postalCodeService.findPostalCode(normalizedAddress);
@@ -152,11 +233,11 @@ class FileController {
             if (config?.output?.includeRoadAddress) {
               extra.push(result.fullAddress || '');
             }
-            results.push([...row, ...extra]);
+            results.push([...baseRow, ...extra]);
           } else {
             const extra = [''];
             if (config?.output?.includeRoadAddress) extra.push('');
-            results.push([...row, ...extra]); // 우편번호/도로명주소 미기재
+            results.push([...baseRow, ...extra]); // 우편번호/도로명주소 미기재
             errors.push({
               row: i + 2,
               address: address,
@@ -166,7 +247,7 @@ class FileController {
         } catch (error) {
           const extra = [''];
           if (config?.output?.includeRoadAddress) extra.push('');
-          results.push([...row, ...extra]); // 오류 시 빈 값
+          results.push([...baseRow, ...extra]); // 오류 시 빈 값
           errors.push({
             row: i + 2,
             address: address,
@@ -176,12 +257,11 @@ class FileController {
         
         // 진행 상황 업데이트
         const processed = i + 1;
-        const prev2 = processingJobs.get(jobId) || {};
-        processingJobs.set(jobId, {
+        updateJob(jobId, (prev2) => ({
           ...prev2,
           progress: Math.round((processed / total) * 100),
           processed
-        });
+        }));
         
         // API 호출 제한 방지를 위한 대기 (Kakao API는 초당 10회 제한)
         if (i > 0 && i % 10 === 0) {
@@ -192,6 +272,8 @@ class FileController {
       }
       
       // 새 엑셀 파일 생성
+      setStepStatus(jobId, 'lookup', 'done');
+      setStepStatus(jobId, 'export', 'in-progress');
       const newWorkbook = XLSX.utils.book_new();
       const newWorksheet = XLSX.utils.aoa_to_sheet([
         processingJobs.get(jobId).headers,
@@ -207,8 +289,7 @@ class FileController {
       
       // 작업 완료
       const finalJobState = processingJobs.get(jobId) || {};
-      processingJobs.set(jobId, {
-        ...finalJobState,
+      updateJob(jobId, {
         status: 'completed',
         progress: 100,
         processed: total,
@@ -222,14 +303,17 @@ class FileController {
         } : null,
         endTime: new Date()
       });
+      setStepStatus(jobId, 'export', 'done');
       
       // 원본 파일 삭제
       await fs.unlink(filePath);
       
     } catch (error) {
-      const prev = processingJobs.get(jobId) || {};
-      processingJobs.set(jobId, {
-        ...prev,
+      console.error('파일 처리 중 오류 발생:', error);
+      setStepStatus(jobId, 'dedupe', 'error');
+      setStepStatus(jobId, 'lookup', 'error');
+      setStepStatus(jobId, 'export', 'error');
+      updateJob(jobId, {
         status: 'error',
         error: String(error?.message || error),
         endTime: new Date()
@@ -263,8 +347,25 @@ class FileController {
         progress: job.progress,
         processed: job.processed,
         total: job.total,
-        startTime: job.startTime
+        startTime: job.startTime,
+        truncatedCount: job.truncatedCount || 0,
+        maxRows: job.maxRows || (Number(config?.upload?.maxRows) || 300),
+        steps: job.steps || cloneSteps()
       };
+
+      if (job.status === 'processing' && job.startTime && job.processed && job.total) {
+        const start = new Date(job.startTime).getTime();
+        const elapsed = Date.now() - start;
+        if (elapsed > 0 && job.processed > 0 && job.total > job.processed) {
+          const ratePerItem = elapsed / job.processed;
+          const remaining = Math.max(job.total - job.processed, 0) * ratePerItem;
+          if (Number.isFinite(remaining) && remaining >= 0) {
+            response.estimatedRemainingMs = Math.round(remaining);
+          }
+        }
+      } else if (job.status === 'completed') {
+        response.estimatedRemainingMs = 0;
+      }
       
       if (job.status === 'completed') {
         response.downloadUrl = `/api/file/download/${jobId}`;
