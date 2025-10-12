@@ -157,8 +157,12 @@ class FileController {
       const normalizeHeader = (header) => String(header || '').toLowerCase().replace(/[\s_\/]/g, '');
       const shouldRemoveHeader = (header) => {
         const norm = normalizeHeader(header);
-        const removalKeys = ['시도', '시도명', 'sido', 'province', '특별시', '광역시', '특별자치도', '자치도', 'sigungu', '시군구', '시군구명', '군구'];
-        return removalKeys.some(key => norm === key);
+        if (!norm) return false;
+        const removalPatterns = [
+          '시도', '시군구', '광역시', '특별시', '특별자치시', '특별자치도',
+          'sido', 'sigungu', 'metropolitan', 'province', '행정구역', '행정동'
+        ];
+        return removalPatterns.some(pattern => norm.includes(pattern));
       };
       const detailKeywords = ['상세주소', '상세', '세부주소', '동호', '동호수', '호수', '호실', '아파트상세'];
       const detailColumnIndex = headers.findIndex(header => {
@@ -212,10 +216,20 @@ class FileController {
           continue;
         }
         
-        const { main: mainAddress, detail: derivedDetail } = addressParser.splitAddressDetail(address);
+        const { main: splitMainAddress, detail: splitDetail } = addressParser.splitAddressDetail(address);
+        const mainAddress = splitMainAddress || (row[addressColumnIndex] ?? '');
+        const derivedDetail = splitDetail;
+        let enrichedAddress = mainAddress;
+        if (derivedDetail) {
+          const trimmedDetail = derivedDetail.trim();
+          if (trimmedDetail && !enrichedAddress.includes(trimmedDetail)) {
+            enrichedAddress = `${enrichedAddress} ${trimmedDetail}`.replace(/\s+/g, ' ').trim();
+          }
+        }
+
         const baseRow = headerPlan.map(plan => {
           if (plan.type === 'address') {
-            return mainAddress || (row[plan.index] ?? '');
+            return enrichedAddress || (row[plan.index] ?? '');
           }
           if (plan.type === 'detail') {
             const existing = row[plan.index];
