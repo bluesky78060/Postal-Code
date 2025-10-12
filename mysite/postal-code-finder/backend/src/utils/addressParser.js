@@ -229,6 +229,18 @@ class AddressParser {
       main = tokens.join(' ').trim();
     }
 
+    // 하이픈 형태(예: 101-1203, B-1203, 101동-1203호 등) 상세 추출
+    if (!detailParts.length) {
+      const hyphenDetailRegex = /(?:\s|^)([A-Za-z가-힣]*\s*\d{1,4}\s*동\s*-?\s*\d{1,4}(?:\s*(?:호|층))?|[A-Za-z]?\d{1,3}-\d{1,4}(?:\s*(?:호|층))?)\s*$/;
+      const m = main.match(hyphenDetailRegex);
+      if (m && m[1]) {
+        const seg = m[1].trim();
+        // 과도한 분해 없이 원형 유지하여 상세주소에 수록
+        detailParts.push(seg);
+        main = main.slice(0, m.index).trim();
+      }
+    }
+
     main = main.replace(/\s{2,}/g, ' ').trim();
     const detail = detailParts.join(' ').replace(/\s{2,}/g, ' ').trim();
     return { main, detail };

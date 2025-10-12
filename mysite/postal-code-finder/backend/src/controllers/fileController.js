@@ -159,7 +159,7 @@ class FileController {
         const norm = normalizeHeader(header);
         if (!norm) return false;
         const removalPatterns = [
-          '시도', '시군구', '광역시', '특별시', '특별자치시', '특별자치도',
+          '시도', '시군구', '시도명', '시군구명', '광역시', '특별시', '특별자치시', '특별자치도',
           'sido', 'sigungu', 'metropolitan', 'province', '행정구역', '행정동'
         ];
         return removalPatterns.some(pattern => norm.includes(pattern));
@@ -170,6 +170,16 @@ class FileController {
         return detailKeywords.some(key => norm === key || norm.includes(key));
       });
 
+      // 동/호 개별 컬럼 식별 (상세주소가 없는 경우 보조로 사용)
+      const dongKeywords = ['동', 'dong'];
+      const hoKeywords = ['호', '호수', 'hosu', 'unit', 'room'];
+      const findIndexByKeywords = (keys) => headers.findIndex(header => {
+        const norm = normalizeHeader(header);
+        return keys.some(k => norm === k || norm.endsWith(k));
+      });
+      const dongColumnIndex = findIndexByKeywords(dongKeywords);
+      const hoColumnIndex = findIndexByKeywords(hoKeywords);
+
       const headerPlan = [];
       headers.forEach((header, idx) => {
         if (shouldRemoveHeader(header)) return;
@@ -177,7 +187,7 @@ class FileController {
           const label = header && String(header).trim() ? String(header).trim() : '주소';
           headerPlan.push({ type: 'address', header: label, index: idx });
           if (detailColumnIndex === -1) {
-            headerPlan.push({ type: 'detail-auto', header: '상세주소', index: idx });
+            headerPlan.push({ type: 'detail-auto', header: '상세주소', index: idx, dongIndex: dongColumnIndex, hoIndex: hoColumnIndex });
           }
         } else if (idx === detailColumnIndex) {
           headerPlan.push({ type: 'detail', header: '상세주소', index: idx });
@@ -236,7 +246,14 @@ class FileController {
             return (existing && String(existing).trim()) ? existing : derivedDetail;
           }
           if (plan.type === 'detail-auto') {
-            return derivedDetail;
+            // 동/호 개별 컬럼에서 조합해 상세주소를 생성(없으면 split 기반 값 사용)
+            const dongVal = (typeof plan.dongIndex === 'number' && plan.dongIndex >= 0) ? (row[plan.dongIndex] ?? '') : '';
+            const hoVal = (typeof plan.hoIndex === 'number' && plan.hoIndex >= 0) ? (row[plan.hoIndex] ?? '') : '';
+            const parts = [];
+            if (dongVal && String(dongVal).trim()) parts.push(`${String(dongVal).toString().trim()}동`);
+            if (hoVal && String(hoVal).trim()) parts.push(`${String(hoVal).toString().trim()}호`);
+            const assembled = parts.join(' ').trim();
+            return (assembled || derivedDetail || '') || '';
           }
           return row[plan.index];
         });
