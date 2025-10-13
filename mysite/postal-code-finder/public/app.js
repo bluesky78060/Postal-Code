@@ -356,7 +356,7 @@
           </div>
           <div style="margin-top:15px; display:flex; gap:8px; flex-wrap:wrap;">
             <button class="btn" data-download-excel style="background: #28a745; color: white;">
-              📥 엑셀 다운로드 (성공${successful}_오류${failed})
+              📥 엑셀 다운로드
             </button>
             <button class="btn" data-reset-upload>↩️ 초기화</button>
           </div>
