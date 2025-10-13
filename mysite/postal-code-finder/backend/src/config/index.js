@@ -5,7 +5,6 @@ try {
   const backendEnv = path.join(__dirname, '../../.env');
   require('dotenv').config({ path: backendEnv });
 } catch (_) {}
-const path = require('path');
 
 const config = {
   // 서버 설정

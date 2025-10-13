@@ -180,25 +180,24 @@ class FileController {
       const dongColumnIndex = findIndexByKeywords(dongKeywords);
       const hoColumnIndex = findIndexByKeywords(hoKeywords);
 
-      const headerPlan = [];
-      headers.forEach((header, idx) => {
-        if (shouldRemoveHeader(header)) return;
-        if (idx === addressColumnIndex) {
-          const label = header && String(header).trim() ? String(header).trim() : '주소';
-          headerPlan.push({ type: 'address', header: label, index: idx });
-          if (detailColumnIndex === -1) {
-            headerPlan.push({ type: 'detail-auto', header: '상세주소', index: idx, dongIndex: dongColumnIndex, hoIndex: hoColumnIndex });
-          }
-        } else if (idx === detailColumnIndex) {
-          headerPlan.push({ type: 'detail', header: '상세주소', index: idx });
-        } else {
-          headerPlan.push({ type: 'keep', header: header && String(header).trim() ? String(header).trim() : `열${idx + 1}`, index: idx });
-        }
-      });
-
-      const headersOut = headerPlan.map(item => item.header);
-      headersOut.push('우편번호');
+      // 최종 헤더 재구성: 관리 컬럼과 중복 필드 제거 후 [베이스..., (도로명주소), 상세주소, 우편번호]
+      const isRoadHeader = (header) => {
+        const n = normalizeHeader(header);
+        return n.includes('도로명주소') || n.includes('road') || n.includes('fulladdress') || n.includes('전체주소');
+      };
+      const isDetailHeader = (header) => {
+        const n = normalizeHeader(header);
+        return n.includes('상세주소') || n.includes('세부주소') || n.includes('동호') || n.includes('호수') || n.includes('호실');
+      };
+      const isPostalHeader = (header) => {
+        const n = normalizeHeader(header);
+        return n.includes('우편번호') || n.includes('postal') || n.includes('zip');
+      };
+      const baseHeaders = headers.filter(h => !shouldRemoveHeader(h) && !isRoadHeader(h) && !isDetailHeader(h) && !isPostalHeader(h));
+      const headersOut = [...baseHeaders];
       if (config?.output?.includeRoadAddress) headersOut.push('도로명주소');
+      headersOut.push('상세주소');
+      headersOut.push('우편번호');
 
       updateJob(jobId, {
         total,
@@ -237,40 +236,44 @@ class FileController {
           }
         }
 
-        const baseRow = headerPlan.map(plan => {
-          if (plan.type === 'address') {
-            return enrichedAddress || (row[plan.index] ?? '');
-          }
-          if (plan.type === 'detail') {
-            const existing = row[plan.index];
-            return (existing && String(existing).trim()) ? existing : derivedDetail;
-          }
-          if (plan.type === 'detail-auto') {
-            // 동/호 개별 컬럼에서 조합해 상세주소를 생성(없으면 split 기반 값 사용)
-            const dongVal = (typeof plan.dongIndex === 'number' && plan.dongIndex >= 0) ? (row[plan.dongIndex] ?? '') : '';
-            const hoVal = (typeof plan.hoIndex === 'number' && plan.hoIndex >= 0) ? (row[plan.hoIndex] ?? '') : '';
-            const parts = [];
-            if (dongVal && String(dongVal).trim()) parts.push(`${String(dongVal).toString().trim()}동`);
-            if (hoVal && String(hoVal).trim()) parts.push(`${String(hoVal).toString().trim()}호`);
-            const assembled = parts.join(' ').trim();
-            return (assembled || derivedDetail || '') || '';
-          }
-          return row[plan.index];
+        // 베이스 데이터: 기존 컬럼 값 복사 (주소 컬럼은 enrichedAddress 사용)
+        const baseRow = baseHeaders.map(h => {
+          const idx = headers.indexOf(h);
+          if (idx === addressColumnIndex) return enrichedAddress || (row[idx] ?? '');
+          return idx >= 0 ? (row[idx] ?? '') : '';
         });
         try {
           const normalizedAddress = addressParser.normalizeAddress(address);
           const result = await postalCodeService.findPostalCode(normalizedAddress);
           
           if (result) {
-            const extra = [result.postalCode];
-            if (config?.output?.includeRoadAddress) {
-              extra.push(result.fullAddress || '');
+            // 상세주소 계산: 기존 상세 > 파생 상세 > 동/호 조합
+            let detailOut = '';
+            if (detailColumnIndex !== -1) {
+              const existing = row[detailColumnIndex];
+              detailOut = (existing && String(existing).trim()) ? String(existing).trim() : '';
             }
-            results.push([...baseRow, ...extra]);
+            if (!detailOut) detailOut = derivedDetail || '';
+            if (!detailOut) {
+              const parts = [];
+              const dv = (typeof dongColumnIndex === 'number' && dongColumnIndex >= 0) ? (row[dongColumnIndex] ?? '') : '';
+              const hv = (typeof hoColumnIndex === 'number' && hoColumnIndex >= 0) ? (row[hoColumnIndex] ?? '') : '';
+              if (dv && String(dv).trim()) parts.push(`${String(dv).trim()}동`);
+              if (hv && String(hv).trim()) parts.push(`${String(hv).trim()}호`);
+              if (parts.length) detailOut = parts.join(' ');
+            }
+
+            const extras = [];
+            if (config?.output?.includeRoadAddress) extras.push(result.fullAddress || '');
+            extras.push(detailOut || '');
+            extras.push(result.postalCode || '');
+            results.push([...baseRow, ...extras]);
           } else {
-            const extra = [''];
-            if (config?.output?.includeRoadAddress) extra.push('');
-            results.push([...baseRow, ...extra]); // 우편번호/도로명주소 미기재
+            const extras = [];
+            if (config?.output?.includeRoadAddress) extras.push('');
+            extras.push('');
+            extras.push('');
+            results.push([...baseRow, ...extras]); // 빈 값 삽입
             errors.push({
               row: i + 2,
               address: address,
@@ -278,9 +281,11 @@ class FileController {
             });
           }
         } catch (error) {
-          const extra = [''];
-          if (config?.output?.includeRoadAddress) extra.push('');
-          results.push([...baseRow, ...extra]); // 오류 시 빈 값
+          const extras = [];
+          if (config?.output?.includeRoadAddress) extras.push('');
+          extras.push('');
+          extras.push('');
+          results.push([...baseRow, ...extras]); // 오류 시 빈 값
           errors.push({
             row: i + 2,
             address: address,

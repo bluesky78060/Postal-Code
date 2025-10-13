@@ -91,6 +91,33 @@ class JusoPostalCodeService {
     return inRoad && this._norm(itemRoad) === inRoad;
   }
 
+  // 입력 주소에서 건물명 기반 키워드 추출 (예: "삼영a동" -> "삼영")
+  _extractBuildingBase(address) {
+    if (!address) return '';
+    const text = String(address).trim();
+    // 우선 괄호 내용 제거 후 토큰화
+    const cleaned = text.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+    const tokens = cleaned.split(' ').filter(Boolean);
+    // 아파트/빌라 명칭 포함 토큰 우선
+    const aptIdx = tokens.findIndex(t => /(아파트|빌라|APT)/i.test(t));
+    if (aptIdx > 0) {
+      // 바로 앞 토큰이 단지명일 확률이 높음
+      const base = tokens[aptIdx - 1].replace(/[A-Za-z]+$/g, '').replace(/동$/, '');
+      if (base && base.length >= 2) return base;
+    }
+    // "OOO동" 꼴에서 문자+동 → 단지명
+    for (const t of tokens) {
+      if (/^[A-Za-z가-힣]+[A-Za-z]?동$/i.test(t)) {
+        const base = t.replace(/[A-Za-z]+$/g, '').replace(/동$/i, '');
+        if (base && base.length >= 2) return base;
+      }
+    }
+    // 숫자/도로/행정구역 제거 후 남는 2글자 이상 토큰 중 하나 반환
+    const exclude = /(시|군|구|동|읍|면|리|로|길|가|번|호)$/;
+    const candidate = tokens.find(t => !/\d/.test(t) && !exclude.test(t) && t.length >= 2);
+    return candidate || '';
+  }
+
   _scoreItem(item, input, nums) {
     const road = item.roadAddr || '';
     let score = 0;
@@ -110,7 +137,30 @@ class JusoPostalCodeService {
     const comp = addressParser.parseAddressComponents(keyword);
     // 더 많은 후보를 받아 필터링
     const { items } = await this._search(keyword, 1, 50);
-    if (items.length === 0) return null;
+    if (items.length === 0) {
+      // 1차 실패: 건물명 기반 지역 검색으로 폴백 시도
+      const base = this._extractBuildingBase(keyword);
+      const region = comp.sigungu || comp.sido || '';
+      if (base && region) {
+        const tryKeywords = [
+          `${region} ${base} 아파트`,
+          `${region} ${base}`
+        ];
+        for (const k of tryKeywords) {
+          try {
+            const f = await this._search(k, 1, 50);
+            const list = (f.items || []).filter(it => this._regionMatches(it, comp) && (
+              (it.bdNm && this._norm(it.bdNm).includes(this._norm(base))) ||
+              this._norm(it.roadAddr || it.jibunAddr || '').includes(this._norm(base))
+            ));
+            if (list.length) {
+              return this._toResult(list[0]);
+            }
+          } catch (_) { /* ignore and continue */ }
+        }
+      }
+      return null;
+    }
     const nums = this._extractBuildingNumbers(keyword);
     // 후보군 필터링: 지역 + 도로명 일치 → 도로명 일치 → 지역 일치 순
     const strict = items.filter(it => this._regionMatches(it, comp) && this._roadMatches(it, comp.road));
@@ -119,8 +169,29 @@ class JusoPostalCodeService {
 
     const pool = roadOnly.length ? roadOnly : (regionOnly.length ? regionOnly : []);
     if (pool.length === 0) {
+      // 2차 폴백: 지역+건물명 재검색
+      const base = this._extractBuildingBase(keyword);
+      const region = comp.sigungu || comp.sido || '';
+      if (base && region) {
+        const tryKeywords = [
+          `${region} ${base} 아파트`,
+          `${region} ${base}`
+        ];
+        for (const k of tryKeywords) {
+          try {
+            const f = await this._search(k, 1, 50);
+            const list = (f.items || []).filter(it => this._regionMatches(it, comp) && (
+              (it.bdNm && this._norm(it.bdNm).includes(this._norm(base))) ||
+              this._norm(it.roadAddr || it.jibunAddr || '').includes(this._norm(base))
+            ));
+            if (list.length) {
+              return this._toResult(list[0]);
+            }
+          } catch (_) { /* ignore and continue */ }
+        }
+      }
       logger.info('Juso candidate none after filters', { input: keyword });
-      return null; // 잘못된 오매칭 방지: 후보가 없으면 실패 처리
+      return null; // 후보 없으면 실패 처리
     }
 
     let best = null, bestScore = -1;

@@ -189,10 +189,21 @@ class AddressParser {
     let main = String(address).trim();
     const detailParts = [];
 
-    // 괄호 안의 정보는 상세로 이동
+    // 상세 토큰 판별: 동/호/층 또는 동-호 형태만 허용 (건물명 제외)
+    const isUnitToken = (txt) => {
+      const s = String(txt || '').trim();
+      if (!s) return false;
+      // 동/호/층 중 하나 포함 + 숫자 포함
+      if (/(동|호|층)/i.test(s) && /\d/.test(s)) return true;
+      // 하이픈형 호수(101-1203, B-1203 등)
+      if (/^[A-Za-z]?\d{1,4}-\d{1,4}(\s*(호|층))?$/i.test(s)) return true;
+      return false;
+    };
+
+    // 괄호 안의 정보는 상세로 이동(단, 동/호/층 패턴일 때만)
     main = main.replace(/\(([^)]+)\)/g, (_, inner) => {
       const clean = inner.trim();
-      if (clean) detailParts.push(clean);
+      if (isUnitToken(clean)) detailParts.push(clean);
       return '';
     });
 
@@ -200,7 +211,7 @@ class AddressParser {
     const commaSegments = main.split(',').map(seg => seg.trim()).filter(Boolean);
     if (commaSegments.length > 1) {
       const last = commaSegments[commaSegments.length - 1];
-      if (/\d/.test(last) && /(동|호|층)/.test(last)) {
+      if (isUnitToken(last)) {
         detailParts.push(last);
         commaSegments.pop();
         main = commaSegments.join(', ').trim();
@@ -225,24 +236,28 @@ class AddressParser {
       break;
     }
     if (tailTokens.length) {
-      detailParts.push(tailTokens.join(' ').trim());
+      const tail = tailTokens.join(' ').trim();
+      if (isUnitToken(tail)) detailParts.push(tail);
       main = tokens.join(' ').trim();
     }
 
     // 하이픈 형태(예: 101-1203, B-1203, 101동-1203호 등) 상세 추출
     if (!detailParts.length) {
-      const hyphenDetailRegex = /(?:\s|^)([A-Za-z가-힣]*\s*\d{1,4}\s*동\s*-?\s*\d{1,4}(?:\s*(?:호|층))?|[A-Za-z]?\d{1,3}-\d{1,4}(?:\s*(?:호|층))?)\s*$/;
+      const hyphenDetailRegex = /(?:\s|^)([A-Za-z]?\d{1,4}-\d{1,4}(?:\s*(?:호|층))?)\s*$/;
       const m = main.match(hyphenDetailRegex);
       if (m && m[1]) {
         const seg = m[1].trim();
-        // 과도한 분해 없이 원형 유지하여 상세주소에 수록
-        detailParts.push(seg);
-        main = main.slice(0, m.index).trim();
+        if (isUnitToken(seg)) {
+          detailParts.push(seg);
+          main = main.slice(0, m.index).trim();
+        }
       }
     }
 
+    // 최종 상세는 허용 토큰만 조합
+    const filtered = detailParts.filter(isUnitToken);
     main = main.replace(/\s{2,}/g, ' ').trim();
-    const detail = detailParts.join(' ').replace(/\s{2,}/g, ' ').trim();
+    const detail = filtered.join(' ').replace(/\s{2,}/g, ' ').trim();
     return { main, detail };
   }
 }
