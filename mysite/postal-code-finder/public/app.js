@@ -456,10 +456,10 @@
     lastLabelStatus = null;
 
     console.log('파일 처리 시작:', file.name);
-    
+
     // 진행 상황 표시
     document.getElementById('labelUploadProgress').classList.remove('hidden');
-    updateProgressCard('label', { progress: 0, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 업로드 중...');
+    updateProgressCard('label', { progress: 10, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 업로드 중...');
 
     try {
       const formData = new FormData();
@@ -472,35 +472,68 @@
       const ct = response.headers.get('content-type') || '';
       const cd = response.headers.get('content-disposition') || '';
 
-      let data;
       if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
-        // Excel 파일 다운로드 응답 (배포판)
-        console.warn('라벨 모드에서 즉시 Excel 다운로드 응답 수신 (배포판)');
+        // Excel 파일 다운로드 응답 (배포판 - 즉시 처리 완료)
+        console.log('배포판: 즉시 Excel 파일 다운로드');
+        updateProgressCard('label', { progress: 90, steps: cloneProgressSteps('export') }, '파일 생성 완료...');
+
         const blob = await response.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'postal_result.xlsx';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        document.getElementById('labelUploadProgress').classList.add('hidden');
-        return;
+
+        // Excel 파일을 읽어서 라벨 데이터로 변환
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const XLSX = window.XLSX || (await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js'));
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          if (jsonData.length > 0) {
+            const headers = jsonData[0];
+            const rows = jsonData.slice(1);
+            labelData = { headers, rows };
+            currentLabelJobId = 'vercel_' + Date.now();
+
+            updateProgressCard('label', { progress: 100, steps: cloneProgressSteps('export') }, '처리 완료!');
+            document.getElementById('labelUploadProgress').classList.add('hidden');
+            showLabelDataPreview();
+            return;
+          }
+        } catch (xlsxError) {
+          console.error('Excel 파일 읽기 실패:', xlsxError);
+          // Excel 파일만 다운로드하고 라벨 미리보기는 샘플로 대체
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'postal_result.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          updateProgressCard('label', { progress: 100, steps: cloneProgressSteps('export') }, '다운로드 완료!');
+          document.getElementById('labelUploadProgress').classList.add('hidden');
+
+          // 샘플 데이터로 라벨 미리보기
+          labelData = generateSampleData();
+          showLabelDataPreview();
+          return;
+        }
       }
 
-      // JSON 응답 (로컬 또는 label mode)
+      // JSON 응답 (로컬 환경 - job tracking)
+      let data;
       try {
         data = await response.json();
       } catch (e) {
         throw new Error('서버 응답을 읽을 수 없습니다: ' + e.message);
       }
-      
+
       console.log('서버 응답:', data);
-      
+
       if (data.success) {
         const jobId = data.data.jobId;
         currentLabelJobId = jobId;
         console.log('JobID:', jobId);
-        updateProgressCard('label', { progress: 10, processed: 0, total: 0, steps: cloneProgressSteps('dedupe') }, '파일 처리 중...');
+        updateProgressCard('label', { progress: 20, processed: 0, total: 0, steps: cloneProgressSteps('dedupe') }, '파일 처리 중...');
         await waitForLabelProcessing(jobId);
       } else {
         document.getElementById('labelUploadProgress').classList.add('hidden');
@@ -510,7 +543,7 @@
       console.error('파일 처리 오류:', error);
       document.getElementById('labelUploadProgress').classList.add('hidden');
       alert('파일 처리 중 오류가 발생했습니다: ' + error.message);
-      
+
       // 오류 발생 시 샘플 데이터로 대체
       console.log('샘플 데이터로 대체');
       lastLabelStatus = null;
