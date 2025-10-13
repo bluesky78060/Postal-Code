@@ -1,9 +1,12 @@
 // Vercel serverless function entry point
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
-const rateLimit = require('express-rate-limit');
+let helmet, compression, rateLimit;
+try {
+  helmet = require('helmet');
+  compression = require('compression');
+  rateLimit = require('express-rate-limit');
+} catch (_) {}
 const path = require('path');
 
 // 설정 파일 가져오기 (Vercel 환경 고려)
@@ -39,25 +42,44 @@ try {
 }
 
 const app = express();
+// Minimal health handler (works even if further init fails)
+function rawHealth(res) {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(200).end(JSON.stringify({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    env: {
+      JUSO_API_KEY: !!process.env.JUSO_API_KEY,
+      NODE_ENV: process.env.NODE_ENV || null,
+    }
+  }));
+}
+app.get('/api/health', (req, res) => rawHealth(res));
 
 // Behind Vercel/Reverse proxies, trust X-Forwarded-* headers for correct IPs
 // This prevents express-rate-limit v7 from throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
 app.set('trust proxy', true);
 
-// 보안 미들웨어
-app.use(helmet({
-  contentSecurityPolicy: {
-    useDefaults: true,
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'"],
-    }
-  }
-}));
-app.use(compression());
+// 보안/압축 미들웨어 (로컬/서버 환경에 따라 조건 적용)
+if (helmet) {
+  try {
+    app.use(helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+        }
+      }
+    }));
+  } catch (_) {}
+}
+if (compression) {
+  try { app.use(compression()); } catch (_) {}
+}
 
 // CORS 설정
 app.use(cors({
@@ -68,17 +90,21 @@ app.use(cors({
 }));
 
 // API 제한 설정
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15분
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => {
-    const p = req.path || '';
-    return p.startsWith('/file/status') || p.startsWith('/file/download') || p === '/health';
-  }
-});
-app.use('/api/', limiter);
+if (rateLimit) {
+  try {
+    const limiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 100,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => {
+        const p = req.path || '';
+        return p.startsWith('/file/status') || p.startsWith('/file/download') || p === '/health';
+      }
+    });
+    app.use('/api/', limiter);
+  } catch (_) {}
+}
 
 // Body parser
 app.use(express.json({ limit: '1mb' }));
@@ -1110,11 +1136,26 @@ app.use('*', (req, res) => {
   });
 });
 
-// Export as Vercel-compatible serverless handler using serverless-http
+// Export as Vercel-compatible serverless handler; intercept health early
+let serverlessHandler = null;
 try {
   const serverless = require('serverless-http');
-  module.exports = serverless(app);
+  serverlessHandler = serverless(app);
 } catch (_) {
-  // Fallback to direct handler if wrapper not available
-  module.exports = (req, res) => app(req, res);
+  serverlessHandler = (req, res) => app(req, res);
 }
+
+module.exports = (req, res) => {
+  try {
+    if (req.url && (req.url === '/api/health' || req.url.startsWith('/api/health?'))) {
+      return rawHealth(res);
+    }
+    return serverlessHandler(req, res);
+  } catch (e) {
+    try {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Handler error', message: String(e && e.message || e) }));
+    } catch (_) {}
+  }
+};
