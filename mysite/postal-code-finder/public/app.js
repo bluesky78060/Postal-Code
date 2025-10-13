@@ -305,6 +305,11 @@
       return;
     }
 
+    // 기존 Excel 데이터 정리 (메모리 관리)
+    if (window.currentExcelData) {
+      window.currentExcelData = null;
+    }
+
     progressDiv.classList.remove('hidden');
     resultDiv.classList.add('hidden');
     updateProgressCard('upload', { progress: 0, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 업로드 중...');

@@ -607,57 +607,95 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         createdAt: new Date()
       };
 
-      // 즉시 주소 처리 시작
-      for (let i = 0; i < limitedRows.length; i++) {
-        const row = limitedRows[i];
-        const address = row[addressColumnIndex];
-        
-        if (!address || typeof address !== 'string') {
-          jobData.errors.push({ row: i + 2, error: '주소가 없습니다' });
-          continue;
-        }
+      // 병렬 처리 함수 (동시성 5개)
+      const addressDetailCache = new Map(); // splitAddressDetail 결과 캐싱
+      const concurrency = 5;
+      const batchDelay = 100; // 배치 간 100ms 지연
 
-        try {
-          // 1) 상세(동/호/층) 제거한 메인 주소로 직접 검색
-          const { main } = splitAddressDetail(address);
-          const results = await jusoSearch(main || address, 50);
-          const common = results?.common;
-          
-          if (common?.errorCode === '0' && Array.isArray(results?.juso)) {
-            // 2) 후보에서 입력과 엄격 일치 검증 통과하는 첫 건만 채택
-            const cand = results.juso.find(it => verifyJusoCandidate(address, it));
-            if (cand) {
-              const juso = cand;
-              jobData.results.push({
-                row: i + 2,
-                originalAddress: address,
-                postalCode: juso.zipNo || '',
-                fullAddress: juso.roadAddr || juso.jibunAddr || '',
-                sido: juso.siNm || '',
-                sigungu: juso.sggNm || ''
-              });
-            } else {
-              jobData.errors.push({ 
-                row: i + 2, 
-                address: address,
-                error: '우편번호를 찾을 수 없습니다' 
-              });
-            }
+      // 배치 생성
+      const batches = [];
+      for (let i = 0; i < limitedRows.length; i += concurrency) {
+        batches.push(limitedRows.slice(i, Math.min(i + concurrency, limitedRows.length)));
+      }
+
+      console.log(`Processing ${limitedRows.length} addresses in ${batches.length} batches (concurrency: ${concurrency})`);
+
+      // 배치별 병렬 처리
+      for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+        const batch = batches[batchIdx];
+        const startIdx = batchIdx * concurrency;
+
+        const batchPromises = batch.map(async (row, idx) => {
+          const globalIdx = startIdx + idx;
+          const address = row[addressColumnIndex];
+
+          if (!address || typeof address !== 'string') {
+            return { type: 'error', row: globalIdx + 2, error: '주소가 없습니다' };
           }
-        } catch (apiError) {
-          jobData.errors.push({ 
-            row: i + 2, 
-            address: address,
-            error: 'API 호출 실패: ' + apiError.message 
-          });
+
+          try {
+            // 캐싱된 splitAddressDetail 사용
+            let cached = addressDetailCache.get(address);
+            if (!cached) {
+              cached = splitAddressDetail(address);
+              addressDetailCache.set(address, cached);
+            }
+
+            const { main } = cached;
+            const results = await jusoSearch(main || address, 50);
+            const common = results?.common;
+
+            if (common?.errorCode === '0' && Array.isArray(results?.juso)) {
+              const cand = results.juso.find(it => verifyJusoCandidate(address, it));
+              if (cand) {
+                return {
+                  type: 'success',
+                  row: globalIdx + 2,
+                  originalAddress: address,
+                  postalCode: cand.zipNo || '',
+                  fullAddress: cand.roadAddr || cand.jibunAddr || '',
+                  sido: cand.siNm || '',
+                  sigungu: cand.sggNm || ''
+                };
+              }
+            }
+
+            return {
+              type: 'error',
+              row: globalIdx + 2,
+              address: address,
+              error: '우편번호를 찾을 수 없습니다'
+            };
+          } catch (apiError) {
+            return {
+              type: 'error',
+              row: globalIdx + 2,
+              address: address,
+              error: 'API 호출 실패: ' + apiError.message
+            };
+          }
+        });
+
+        // 배치 내 병렬 실행
+        const batchResults = await Promise.all(batchPromises);
+
+        // 결과 분류
+        batchResults.forEach(result => {
+          if (result.type === 'success') {
+            jobData.results.push(result);
+          } else {
+            jobData.errors.push(result);
+          }
+        });
+
+        jobData.processed = Math.min(startIdx + batch.length, limitedRows.length);
+
+        // 배치 간 지연 (API 속도 제한 준수)
+        if (batchIdx < batches.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
 
-        jobData.processed = i + 1;
-        
-        // API 호출 제한을 위한 지연
-        if (i < limitedRows.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
+        console.log(`Batch ${batchIdx + 1}/${batches.length} completed - Success: ${jobData.results.length}, Errors: ${jobData.errors.length}`);
       }
 
       jobData.status = 'completed';
@@ -683,14 +721,20 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         // 결과 데이터를 엑셀 형식으로 변환
         const resultData = [newHeaders];
 
+        // Map 기반 O(1) 조회로 최적화
+        const resultsMap = new Map(
+          jobData.results.map(r => [r.row, r])
+        );
+
         // 원본 데이터에 우편번호 정보 추가
         limitedRows.forEach((row, index) => {
-          const result = jobData.results.find(r => r.row === index + 2);
+          const result = resultsMap.get(index + 2); // O(1) 조회
           const originalRow = Array.isArray(row) ? [...row] : Object.values(row || {});
 
-          // 원본 주소에서 상세주소 추출
+          // 캐시된 상세주소 사용
           const originalAddress = originalRow[addressColumnIndex] || '';
-          const { detail } = splitAddressDetail(originalAddress);
+          const cached = addressDetailCache.get(originalAddress);
+          const detail = cached ? cached.detail : splitAddressDetail(originalAddress).detail;
 
           // 시도/시군구를 제외한 원본 데이터 복사
           const newRow = [];
