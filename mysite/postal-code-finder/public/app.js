@@ -585,8 +585,13 @@
       console.log('라벨 데이터 로드 시작:', jobId);
       // 새로운 label-data API 엔드포인트 사용
       const response = await fetch(`${API_BASE}/file/label-data/${jobId}`);
+
+      if (!response.ok) {
+        throw new Error(`API 오류: ${response.status}`);
+      }
+
       const data = await response.json();
-      
+
       if (data.success) {
         console.log('라벨 데이터 로드 성공:', data.data);
         labelData = {
@@ -599,10 +604,51 @@
       }
     } catch (error) {
       console.error('데이터 로드 실패:', error);
-      alert('실제 데이터 로드에 실패했습니다. 샘플 데이터를 사용합니다.');
-      // 오류 시 샘플 데이터 사용
-      labelData = generateSampleData();
-      showLabelDataPreview();
+      console.log('Excel 다운로드 후 파싱으로 대체 시도...');
+
+      // label-data API 실패 시 Excel 파일을 다운로드해서 파싱
+      try {
+        const downloadResponse = await fetch(`${API_BASE}/file/download/${jobId}`);
+
+        if (!downloadResponse.ok) {
+          throw new Error('Excel 다운로드 실패');
+        }
+
+        const ct = downloadResponse.headers.get('content-type') || '';
+        const cd = downloadResponse.headers.get('content-disposition') || '';
+
+        if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
+          const blob = await downloadResponse.blob();
+
+          // XLSX로 파싱
+          const arrayBuffer = await blob.arrayBuffer();
+          const XLSX = window.XLSX;
+          if (!XLSX) {
+            throw new Error('XLSX 라이브러리가 로드되지 않았습니다');
+          }
+
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          if (jsonData.length > 0) {
+            const headers = jsonData[0];
+            const rows = jsonData.slice(1);
+            labelData = { headers, rows };
+            console.log('Excel 파싱 성공:', { headers, rowCount: rows.length });
+            showLabelDataPreview();
+            return;
+          }
+        }
+
+        throw new Error('Excel 파싱 실패');
+      } catch (downloadError) {
+        console.error('Excel 다운로드/파싱 실패:', downloadError);
+        alert('데이터 로드에 실패했습니다. 샘플 데이터를 사용합니다.');
+        labelData = generateSampleData();
+        showLabelDataPreview();
+      }
     }
   }
 
