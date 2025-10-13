@@ -629,25 +629,27 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       // 즉시 엑셀 파일 생성 및 다운로드 응답
       try {
         const XLSX = require('xlsx');
-        
-        // 기존 컬럼 중에서 중복될 수 있는 컬럼들 확인
+
+        // 기존 컬럼 확인 (시도/시군구는 항상 제외)
         const existingColumns = headers.map(h => String(h).toLowerCase());
         const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
         const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
-        const hasSido = existingColumns.some(col => col.includes('시도') || col.includes('시/도') || col.includes('sido'));
-        const hasSigungu = existingColumns.some(col => col.includes('시군구') || col.includes('시/군/구') || col.includes('sigungu'));
+        const hasDetailAddress = existingColumns.some(col => col.includes('상세주소') || col.includes('detail'));
 
-        // 새로 추가할 컬럼들만 선별
-        const newHeaders = [...headers];
-        if (!hasPostalCode) newHeaders.push('우편번호');
+        // 새 헤더: 기존 헤더에서 시도/시군구 제외하고, 도로명주소/상세주소/우편번호 추가
+        const newHeaders = headers.filter(h => {
+          const lower = String(h).toLowerCase();
+          return !lower.includes('시도') && !lower.includes('시/도') && !lower.includes('sido') &&
+                 !lower.includes('시군구') && !lower.includes('시/군/구') && !lower.includes('sigungu');
+        });
+
         if (!hasFullAddress) newHeaders.push('도로명주소');
-        if (!hasSido) newHeaders.push('시도');
-        if (!hasSigungu) newHeaders.push('시군구');
+        if (!hasDetailAddress) newHeaders.push('상세주소');
+        if (!hasPostalCode) newHeaders.push('우편번호');
 
         console.log('Original headers:', headers);
-        console.log('Existing columns lowercase:', existingColumns);
-        console.log('Duplicate check:', { hasPostalCode, hasFullAddress, hasSido, hasSigungu });
-        console.log('New headers:', newHeaders);
+        console.log('New headers (시도/시군구 제외):', newHeaders);
+        console.log('Processing results: Success:', jobData.results.length, 'Errors:', jobData.errors.length);
 
         // 결과 데이터를 엑셀 형식으로 변환
         const resultData = [newHeaders];
@@ -655,27 +657,35 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         // 원본 데이터에 우편번호 정보 추가
         limitedRows.forEach((row, index) => {
           const result = jobData.results.find(r => r.row === index + 2);
-          const newRow = Array.isArray(row) ? [...row] : Object.values(row || {});
-          
-          // 헤더와 행의 길이 맞춤
-          while (newRow.length < headers.length) {
-            newRow.push('');
-          }
-          
-          // 중복되지 않는 컬럼들만 추가
+          const originalRow = Array.isArray(row) ? [...row] : Object.values(row || {});
+
+          // 원본 주소에서 상세주소 추출
+          const originalAddress = originalRow[addressColumnIndex] || '';
+          const { detail } = splitAddressDetail(originalAddress);
+
+          // 시도/시군구를 제외한 원본 데이터 복사
+          const newRow = [];
+          headers.forEach((h, idx) => {
+            const lower = String(h).toLowerCase();
+            const isSidoOrSigungu = lower.includes('시도') || lower.includes('시/도') || lower.includes('sido') ||
+                                    lower.includes('시군구') || lower.includes('시/군/구') || lower.includes('sigungu');
+            if (!isSidoOrSigungu) {
+              newRow.push(originalRow[idx] || '');
+            }
+          });
+
+          // 새 컬럼 추가
           if (result) {
-            if (!hasPostalCode) newRow.push(result.postalCode || '');
             if (!hasFullAddress) newRow.push(result.fullAddress || '');
-            if (!hasSido) newRow.push(result.sido || '');
-            if (!hasSigungu) newRow.push(result.sigungu || '');
+            if (!hasDetailAddress) newRow.push(detail || '');
+            if (!hasPostalCode) newRow.push(result.postalCode || '');
           } else {
-            // 실패한 경우 빈 값 (새로 추가되는 컬럼 수만큼)
-            if (!hasPostalCode) newRow.push('');
+            // 실패한 경우 빈 값
             if (!hasFullAddress) newRow.push('');
-            if (!hasSido) newRow.push('');
-            if (!hasSigungu) newRow.push('');
+            if (!hasDetailAddress) newRow.push(detail || '');
+            if (!hasPostalCode) newRow.push('');
           }
-          
+
           resultData.push(newRow);
         });
 
@@ -687,11 +697,15 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         // 파일을 버퍼로 생성
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-        console.log('Excel file generated, size:', buffer.length);
+        console.log('Excel file generated - Success:', jobData.results.length, 'Errors:', jobData.errors.length, 'Size:', buffer.length);
+
+        // 파일명에 처리 결과 통계 포함
+        const timestamp = new Date().getTime();
+        const filename = `postal_result_성공${jobData.results.length}_오류${jobData.errors.length}_${timestamp}.xlsx`;
 
         // 다운로드 응답
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="postal_result_${new Date().getTime()}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
         res.send(buffer);
 
       } catch (excelGenError) {
@@ -965,9 +979,15 @@ app.get('/api/file/download/:jobId', (req, res) => {
 
       console.log('Excel buffer size:', buffer.length);
 
+      // 파일명에 처리 결과 통계 포함
+      const successCount = job.results?.length || 0;
+      const errorCount = job.errors?.length || 0;
+      const timestamp = new Date().getTime();
+      const filename = `postal_result_성공${successCount}_오류${errorCount}_${timestamp}.xlsx`;
+
       // 다운로드 응답
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="postal_result_${new Date().getTime()}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
       res.send(buffer);
 
     } catch (excelGenError) {

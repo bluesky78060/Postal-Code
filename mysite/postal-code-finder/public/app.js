@@ -382,14 +382,17 @@
         updateProgressCard('upload', status);
         if (status.status === 'completed') {
           document.getElementById('uploadProgress').classList.add('hidden');
+          const successCount = status.processed - (status.errors?.length || 0);
+          const errorCount = status.errors?.length || 0;
           const truncatedNote = status.truncatedCount ? `<p class="progress-note">⚠️ 최대 ${status.maxRows || 0}건까지만 처리되어 ${status.truncatedCount}건은 제외되었습니다.</p>` : '';
           showResult(document.getElementById('uploadResult'), `
             <h3>✅ 파일 처리가 완료되었습니다!</h3>
-            <p><strong>처리된 행:</strong> ${status.processed}개</p>
-            <p><strong>오류 행:</strong> ${status.errors?.length || 0}개</p>
+            <p><strong>처리 완료:</strong> ${status.processed}개</p>
+            <p style="color: #28a745;"><strong>✓ 성공:</strong> ${successCount}개</p>
+            <p style="color: #dc3545;"><strong>✗ 오류:</strong> ${errorCount}개</p>
             ${truncatedNote}
             <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn" data-download-id="${jobId}">📥 다운로드</button>
+              <button class="btn" data-download-id="${jobId}">📥 다운로드 (성공${successCount}_오류${errorCount})</button>
               <button class="btn" data-reset-upload>↩️ 초기화</button>
             </div>
           `, 'success');
