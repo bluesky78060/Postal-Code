@@ -8,6 +8,43 @@ const config = require('../config');
 
 // 진행 중인 작업 저장소 (실제 서비스에서는 Redis 등 사용)
 const processingJobs = new Map();
+const JOB_SNAPSHOT_DIR = process.env.JOB_CACHE_DIR || path.join('/tmp', 'postal-code-jobs');
+
+async function ensureJobSnapshotDir() {
+  try {
+    await fs.mkdir(JOB_SNAPSHOT_DIR, { recursive: true });
+  } catch (_) {}
+}
+ensureJobSnapshotDir();
+
+async function persistJobSnapshot(jobId, job) {
+  try {
+    await ensureJobSnapshotDir();
+    const file = path.join(JOB_SNAPSHOT_DIR, `${jobId}.json`);
+    await fs.writeFile(file, JSON.stringify(job), 'utf8');
+  } catch (err) {
+    console.warn('Failed to persist job snapshot', jobId, err?.message || err);
+  }
+}
+
+async function loadJobSnapshot(jobId) {
+  try {
+    const file = path.join(JOB_SNAPSHOT_DIR, `${jobId}.json`);
+    const content = await fs.readFile(file, 'utf8');
+    const parsed = JSON.parse(content);
+    processingJobs.set(jobId, parsed);
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function removeJobSnapshot(jobId) {
+  try {
+    const file = path.join(JOB_SNAPSHOT_DIR, `${jobId}.json`);
+    await fs.unlink(file);
+  } catch (_) {}
+}
 
 const STEP_TEMPLATE = [
   { key: 'upload', label: '파일 업로드', status: 'done' },
@@ -22,6 +59,7 @@ const updateJob = (jobId, updater) => {
   const prev = processingJobs.get(jobId) || {};
   const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
   processingJobs.set(jobId, next);
+  persistJobSnapshot(jobId, next);
   return next;
 };
 
@@ -50,6 +88,7 @@ setInterval(() => {
           require('fs').promises.unlink(job.outputPath).catch(console.warn);
         }
         processingJobs.delete(jobId);
+        removeJobSnapshot(jobId);
         console.log(`Cleaned up old job: ${jobId}`);
       }
     }
@@ -114,7 +153,10 @@ class FileController {
   // 엑셀 파일 처리 (비동기)
   processExcelFile = async (filePath, jobId) => {
     try {
-      const job = processingJobs.get(jobId);
+      let job = processingJobs.get(jobId);
+      if (!job) {
+        job = await loadJobSnapshot(jobId);
+      }
       
       // 엑셀 파일 읽기
       const workbook = XLSX.readFile(filePath);
@@ -433,14 +475,18 @@ class FileController {
       const { fileId } = req.params;
       
       const job = processingJobs.get(fileId);
+      if (!job) {
+        await loadJobSnapshot(fileId);
+      }
+      const refreshedJob = processingJobs.get(fileId);
       
-      if (!job || job.status !== 'completed') {
+      if (!refreshedJob || refreshedJob.status !== 'completed') {
         return res.status(404).json({
           error: '다운로드할 파일을 찾을 수 없습니다.'
         });
       }
       
-      const filePath = job.outputPath;
+      const filePath = refreshedJob.outputPath;
       
       // 파일 존재 확인
       try {
@@ -451,7 +497,7 @@ class FileController {
         });
       }
       
-      res.download(filePath, job.outputFilename, (error) => {
+      res.download(filePath, refreshedJob.outputFilename, (error) => {
         if (error) {
           console.error('파일 다운로드 오류:', error);
           if (!res.headersSent) {
@@ -517,6 +563,7 @@ class FileController {
 
       // 메모리에서 작업 정보 삭제
       processingJobs.delete(fileId);
+      await removeJobSnapshot(fileId);
 
       res.json({
         success: true,
