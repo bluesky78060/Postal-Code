@@ -547,13 +547,13 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
 
       // 중복 제거 실행
       const { uniqueRows, duplicatesRemoved } = removeDuplicateRows(rows, addressColumnIndex);
-      
+
       // 처리할 데이터 개수 제한 (Vercel 함수 시간 제한 고려)
-      const limitedRows = uniqueRows.slice(0, 200);
+      const limitedRows = uniqueRows.slice(0, 300);
 
       console.log(`Excel parsed: ${headers.length} columns, ${rows.length} total rows`);
       console.log(`Duplicates removed: ${duplicatesRemoved}, Unique rows: ${uniqueRows.length}`);
-      console.log(`Processing: ${limitedRows.length} rows (limited to 200)`);
+      console.log(`Processing: ${limitedRows.length} rows (limited to 300)`);
 
       // Label mode: register job and return JSON (no download)
       const acceptJson = (req.headers['accept'] || '').includes('application/json');
