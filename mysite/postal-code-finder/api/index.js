@@ -1110,5 +1110,11 @@ app.use('*', (req, res) => {
   });
 });
 
-// Vercel Node.js Serverless expects a handler function. Wrap Express app.
-module.exports = (req, res) => app(req, res);
+// Export as Vercel-compatible serverless handler using serverless-http
+try {
+  const serverless = require('serverless-http');
+  module.exports = serverless(app);
+} catch (_) {
+  // Fallback to direct handler if wrapper not available
+  module.exports = (req, res) => app(req, res);
+}
