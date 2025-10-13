@@ -466,8 +466,8 @@
       const formData = new FormData();
       formData.append('file', file);
 
-      console.log('API 호출:', `${API_BASE}/file/upload?mode=label`);
-      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
+      console.log('API 호출:', `${API_BASE}/file/upload`);
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
       let data;
       try {
         data = await response.json();
