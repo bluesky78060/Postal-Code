@@ -465,28 +465,33 @@
       const formData = new FormData();
       formData.append('file', file);
 
-      console.log('API 호출:', `${API_BASE}/file/upload`);
-      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+      console.log('API 호출:', `${API_BASE}/file/upload?mode=label`);
+      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
+
+      // content-type을 먼저 확인하여 응답 형식 판단
+      const ct = response.headers.get('content-type') || '';
+      const cd = response.headers.get('content-disposition') || '';
+
       let data;
+      if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
+        // Excel 파일 다운로드 응답 (배포판)
+        console.warn('라벨 모드에서 즉시 Excel 다운로드 응답 수신 (배포판)');
+        const blob = await response.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'postal_result.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        document.getElementById('labelUploadProgress').classList.add('hidden');
+        return;
+      }
+
+      // JSON 응답 (로컬 또는 label mode)
       try {
         data = await response.json();
       } catch (e) {
-        const ct = response.headers.get('content-type') || '';
-        const cd = response.headers.get('content-disposition') || '';
-        if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
-          const blob = await response.blob();
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'postal_result.xlsx';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          console.warn('라벨 모드 JSON 대신 파일 다운로드 응답 수신');
-          document.getElementById('labelUploadProgress').classList.add('hidden');
-          return;
-        } else {
-          throw e;
-        }
+        throw new Error('서버 응답을 읽을 수 없습니다: ' + e.message);
       }
       
       console.log('서버 응답:', data);
