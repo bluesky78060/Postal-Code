@@ -313,7 +313,8 @@
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
+      // 엑셀 업로드 탭은 즉시 처리(다운로드) 경로를 사용해 서버의 엄격 매칭 결과를 반영
+      const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
       let data;
       try {
         data = await response.json();
