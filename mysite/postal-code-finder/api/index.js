@@ -231,6 +231,11 @@ if (!global.excelJobs) {
 }
 
 // JUSO 검색 유틸 및 폴백(지역+건물명)
+const BUILDING_KEYWORDS = [
+  '아파트','apt','빌라','빌리지','오피스텔','주상복합','상가',
+  '타워','캐슬','파크','팰리스','하이츠','하이빌','메트로',
+  '리젠시','리첼','푸르지오','자이','e편한세상','힐스테이트'
+];
 function extractComponents(address) {
   const norm = String(address || '').trim();
   const parts = norm.split(/\s+/).filter(Boolean);
@@ -250,7 +255,8 @@ function extractBuildingBase(address) {
   const text = String(address || '').trim();
   const cleaned = text.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
   const tokens = cleaned.split(' ').filter(Boolean);
-  const aptIdx = tokens.findIndex(t => /(아파트|빌라|APT)/i.test(t));
+  // 키워드가 토큰에 포함될 경우, 바로 앞 토큰(또는 붙어있는 접두)을 단지명으로 판단
+  const aptIdx = tokens.findIndex(t => BUILDING_KEYWORDS.some(k => t.toLowerCase().includes(k)));
   if (aptIdx > 0) {
     const base = tokens[aptIdx - 1].replace(/[A-Za-z]+$/g, '').replace(/동$/, '');
     if (base && base.length >= 2) return base;
@@ -501,19 +507,8 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         }
 
         try {
-          // JUSO API 단건 호출 (폴백 사용 안 함)
-          const axios = require('axios');
-          const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
-            params: {
-              confmKey: process.env.JUSO_API_KEY,
-              currentPage: 1,
-              countPerPage: 1,
-              keyword: address,
-              resultType: 'json'
-            },
-            timeout: 7000
-          });
-          const results = response.data?.results;
+          // JUSO API 호출 (+건물명 폴백)
+          const results = await jusoSearchWithFallback(address);
           const common = results?.common;
           
           if (common?.errorCode === '0' && results.juso?.[0]) {
@@ -703,19 +698,8 @@ app.get('/api/file/status/:jobId', async (req, res) => {
           }
 
         try {
-          // JUSO API 단건 호출 (폴백 사용 안 함)
-          const axios = require('axios');
-          const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
-            params: {
-              confmKey: process.env.JUSO_API_KEY,
-              currentPage: 1,
-              countPerPage: 1,
-              keyword: address,
-              resultType: 'json'
-            },
-            timeout: 7000
-          });
-          const results = response.data?.results;
+          // JUSO API 호출 (+건물명 폴백)
+          const results = await jusoSearchWithFallback(address);
           const common = results?.common;
             
             if (common?.errorCode === '0' && results?.juso?.[0]) {
