@@ -315,25 +315,7 @@
     try {
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
 
-      // 응답 타입 먼저 확인
-      const ct = response.headers.get('content-type') || '';
-      const cd = response.headers.get('content-disposition') || '';
-
-      // Excel 파일 다운로드 응답인 경우
-      if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
-        const blob = await response.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'postal_result.xlsx';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        progressDiv.classList.add('hidden');
-        showResult(resultDiv, `✅ 처리 파일을 다운로드했습니다.`, 'success');
-        return;
-      }
-
-      // JSON 응답인 경우
+      // JSON 응답 파싱
       let data;
       try {
         data = await response.json();
@@ -350,8 +332,29 @@
       }
 
       if (data.success) {
+        // 처리 완료 즉시 결과 표시
+        progressDiv.classList.add('hidden');
+
         const jobId = data.data.jobId;
-        checkProgress(jobId);
+        const successful = data.data.successful || 0;
+        const failed = data.data.failed || 0;
+        const total = data.data.processedRows || 0;
+
+        showResult(resultDiv, `
+          <h3>✅ 파일 처리가 완료되었습니다!</h3>
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>📊 처리 결과</strong></p>
+            <p>• 전체: ${total}개</p>
+            <p style="color: #28a745;">• ✓ 성공: ${successful}개</p>
+            <p style="color: #dc3545;">• ✗ 오류: ${failed}개</p>
+          </div>
+          <div style="margin-top:15px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn" data-download-id="${jobId}" style="background: #28a745; color: white;">
+              📥 엑셀 다운로드 (성공${successful}_오류${failed})
+            </button>
+            <button class="btn" data-reset-upload>↩️ 초기화</button>
+          </div>
+        `, 'success');
       } else {
         progressDiv.classList.add('hidden');
         showResult(resultDiv, `

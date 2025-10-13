@@ -350,41 +350,81 @@ async function jusoSearchWithFallback(address) {
     return null;
   }
 }
-// 상세(동/호/층/하이픈호수)만 추출하고 메인 주소를 분리 (모듈 범위)
+// 상세주소 추출: 동/호/층만 포함, 지번 제외
 function splitAddressDetail(address) {
   if (!address || typeof address !== 'string') return { main: '', detail: '' };
   let main = String(address).trim();
   const detailParts = [];
+
+  // 유닛 토큰 판별: 동/호/층이 포함된 경우만 (지번 제외)
   const isUnitToken = (txt) => {
     const s = String(txt || '').trim();
     if (!s) return false;
-    if (/(동|호|층)/i.test(s) && /\d/.test(s)) return true;
-    if (/^[A-Za-z]?\d{1,4}-\d{1,4}(\s*(호|층))?$/i.test(s)) return true;
+
+    // 지번 패턴 제외 (예: 123-45, 1234, 123-4567 등 순수 숫자+하이픈)
+    if (/^[\d-]+$/.test(s)) return false;
+    if (/^\d{1,4}-\d{1,4}$/.test(s) && !/(동|호|층)/.test(s)) return false;
+
+    // 동/호/층이 명시적으로 포함된 경우만 유효
+    if (/(동|호|층)/.test(s)) {
+      // "101동", "A동", "203호", "5층" 등
+      if (/^[A-Za-z가-힣]?\d{1,4}(동|호|층)$/.test(s)) return true;
+      // "101동 203호", "A동 501호" 등
+      if (/^[A-Za-z가-힣]?\d{1,4}(동|호|층)\s+\d{1,4}(동|호|층)$/.test(s)) return true;
+      // "101-203호", "A-501호" 등 (하이픈 포함하되 동/호/층이 있는 경우)
+      if (/^[A-Za-z]?\d{1,4}-\d{1,4}(호|층)$/.test(s)) return true;
+      return true;
+    }
+
     return false;
   };
+
   // 괄호 안 유닛만 상세로 이동
-  main = main.replace(/\(([^)]+)\)/g, (_, inner) => { const t = inner.trim(); if (isUnitToken(t)) detailParts.push(t); return ''; });
+  main = main.replace(/\(([^)]+)\)/g, (_, inner) => {
+    const t = inner.trim();
+    if (isUnitToken(t)) detailParts.push(t);
+    return '';
+  });
+
   // 콤마 뒤 유닛 이동
   const segs = main.split(',').map(s => s.trim()).filter(Boolean);
   if (segs.length > 1) {
     const last = segs[segs.length - 1];
-    if (isUnitToken(last)) { detailParts.push(last); segs.pop(); main = segs.join(', '); }
+    if (isUnitToken(last)) {
+      detailParts.push(last);
+      segs.pop();
+      main = segs.join(', ');
+    }
   }
-  // 끝부분 토큰 추출
+
+  // 끝부분 토큰 추출 (동/호/층이 명시된 경우만)
   const tokens = main.split(' ').filter(Boolean);
   const tail = [];
   while (tokens.length) {
     const tk = tokens[tokens.length - 1];
-    if (/\d/.test(tk) && /(동|호|층)$/i.test(tk)) { tail.unshift(tk); tokens.pop(); continue; }
-    if (/^[A-Za-z가-힣]+동$/i.test(tk) && tail.length) { tail.unshift(tk); tokens.pop(); continue; }
+    // 동/호/층이 붙어있는 토큰만 추출
+    if (/(동|호|층)$/.test(tk) && /\d/.test(tk)) {
+      tail.unshift(tk);
+      tokens.pop();
+      continue;
+    }
+    // 이미 tail에 뭔가 있고 현재가 "A동" 형태면 추가
+    if (/^[A-Za-z가-힣]+동$/i.test(tk) && tail.length) {
+      tail.unshift(tk);
+      tokens.pop();
+      continue;
+    }
     break;
   }
-  if (tail.length) { const t = tail.join(' ').trim(); if (isUnitToken(t)) detailParts.push(t); main = tokens.join(' ').trim(); }
-  // 하이픈형
-  if (!detailParts.length) {
-    const m = main.match(/(?:\s|^)([A-Za-z]?\d{1,4}-\d{1,4}(?:\s*(?:호|층))?)\s*$/);
-    if (m && m[1]) { const seg = m[1].trim(); if (isUnitToken(seg)) { detailParts.push(seg); main = main.slice(0, m.index).trim(); } }
+
+  if (tail.length) {
+    const t = tail.join(' ').trim();
+    if (isUnitToken(t)) {
+      detailParts.push(t);
+      main = tokens.join(' ').trim();
+    }
   }
+
   const filtered = detailParts.filter(isUnitToken);
   const detail = filtered.join(' ').replace(/\s{2,}/g, ' ').trim();
   main = main.replace(/\s{2,}/g, ' ').trim();
@@ -626,112 +666,27 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       // 임시 파일 삭제
       fs.unlinkSync(req.file.path);
 
-      // 즉시 엑셀 파일 생성 및 다운로드 응답
-      try {
-        const XLSX = require('xlsx');
+      // 작업 결과를 전역 저장소에 저장 (다운로드용)
+      global.excelJobs[jobId] = jobData;
 
-        // 기존 컬럼 확인 (시도/시군구는 항상 제외)
-        const existingColumns = headers.map(h => String(h).toLowerCase());
-        const hasPostalCode = existingColumns.some(col => col.includes('우편번호') || col.includes('postal') || col.includes('zip'));
-        const hasFullAddress = existingColumns.some(col => col.includes('전체주소') || col.includes('full') || col.includes('road') || col.includes('도로명주소'));
-        const hasDetailAddress = existingColumns.some(col => col.includes('상세주소') || col.includes('detail'));
+      console.log('Processing completed - Success:', jobData.results.length, 'Errors:', jobData.errors.length);
 
-        // 새 헤더: 기존 헤더에서 시도/시군구 제외하고, 도로명주소/상세주소/우편번호 추가
-        const newHeaders = headers.filter(h => {
-          const lower = String(h).toLowerCase();
-          return !lower.includes('시도') && !lower.includes('시/도') && !lower.includes('sido') &&
-                 !lower.includes('시군구') && !lower.includes('시/군/구') && !lower.includes('sigungu');
-        });
-
-        if (!hasFullAddress) newHeaders.push('도로명주소');
-        if (!hasDetailAddress) newHeaders.push('상세주소');
-        if (!hasPostalCode) newHeaders.push('우편번호');
-
-        console.log('Original headers:', headers);
-        console.log('New headers (시도/시군구 제외):', newHeaders);
-        console.log('Processing results: Success:', jobData.results.length, 'Errors:', jobData.errors.length);
-
-        // 결과 데이터를 엑셀 형식으로 변환
-        const resultData = [newHeaders];
-
-        // 원본 데이터에 우편번호 정보 추가
-        limitedRows.forEach((row, index) => {
-          const result = jobData.results.find(r => r.row === index + 2);
-          const originalRow = Array.isArray(row) ? [...row] : Object.values(row || {});
-
-          // 원본 주소에서 상세주소 추출
-          const originalAddress = originalRow[addressColumnIndex] || '';
-          const { detail } = splitAddressDetail(originalAddress);
-
-          // 시도/시군구를 제외한 원본 데이터 복사
-          const newRow = [];
-          headers.forEach((h, idx) => {
-            const lower = String(h).toLowerCase();
-            const isSidoOrSigungu = lower.includes('시도') || lower.includes('시/도') || lower.includes('sido') ||
-                                    lower.includes('시군구') || lower.includes('시/군/구') || lower.includes('sigungu');
-            if (!isSidoOrSigungu) {
-              newRow.push(originalRow[idx] || '');
-            }
-          });
-
-          // 새 컬럼 추가
-          if (result) {
-            if (!hasFullAddress) newRow.push(result.fullAddress || '');
-            if (!hasDetailAddress) newRow.push(detail || '');
-            if (!hasPostalCode) newRow.push(result.postalCode || '');
-          } else {
-            // 실패한 경우 빈 값
-            if (!hasFullAddress) newRow.push('');
-            if (!hasDetailAddress) newRow.push(detail || '');
-            if (!hasPostalCode) newRow.push('');
-          }
-
-          resultData.push(newRow);
-        });
-
-        // 워크북 생성
-        const ws = XLSX.utils.aoa_to_sheet(resultData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Results');
-
-        // 파일을 버퍼로 생성
-        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-        console.log('Excel file generated - Success:', jobData.results.length, 'Errors:', jobData.errors.length, 'Size:', buffer.length);
-
-        // 파일명에 처리 결과 통계 포함
-        const timestamp = new Date().getTime();
-        const filename = `postal_result_성공${jobData.results.length}_오류${jobData.errors.length}_${timestamp}.xlsx`;
-
-        // 다운로드 응답
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-        res.send(buffer);
-
-      } catch (excelGenError) {
-        console.error('Excel generation error:', excelGenError);
-        
-        // 엑셀 생성 실패 시 JSON 응답
-        res.json({
-          success: true,
-          data: {
-            jobId: jobId,
-            filename: req.file.originalname,
-            originalRows: jobData.originalRowCount,
-            duplicatesRemoved: jobData.duplicatesRemoved,
-            uniqueRows: jobData.uniqueRowCount,
-            processedRows: limitedRows.length,
-            successful: jobData.results.length,
-            failed: jobData.errors.length,
-            headers: headers,
-            addressColumn: headers[addressColumnIndex],
-            status: 'completed',
-            results: jobData.results,
-            errors: jobData.errors,
-            message: `처리 완료: 원본 ${jobData.originalRowCount}개 → 중복제거 ${jobData.duplicatesRemoved}개 → 고유 ${jobData.uniqueRowCount}개 → 처리 ${limitedRows.length}개 (성공 ${jobData.results.length}개, 실패 ${jobData.errors.length}개) [엑셀 생성 오류: ${excelGenError.message}]`
-          }
-        });
-      }
+      // JSON 응답 (다운로드 UI 표시용)
+      return res.json({
+        success: true,
+        data: {
+          jobId: jobId,
+          filename: req.file.originalname,
+          originalRows: rows.length,
+          duplicatesRemoved: duplicatesRemoved,
+          uniqueRows: uniqueRows.length,
+          processedRows: limitedRows.length,
+          successful: jobData.results.length,
+          failed: jobData.errors.length,
+          status: 'completed',
+          message: `처리 완료: ${limitedRows.length}개 처리 (성공 ${jobData.results.length}개, 오류 ${jobData.errors.length}개)`
+        }
+      });
 
     } catch (excelError) {
       console.error('Excel processing error:', excelError);
