@@ -265,29 +265,75 @@ function extractBuildingBase(address) {
   const cand = tokens.find(t => !/\d/.test(t) && !exclude.test(t) && t.length >= 2);
   return cand || '';
 }
-async function jusoSearch(keyword) {
+async function jusoSearch(keyword, size = 50) {
   const axios = require('axios');
   const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
-    params: { confmKey: process.env.JUSO_API_KEY, currentPage: 1, countPerPage: 1, keyword, resultType: 'json' },
+    params: { confmKey: process.env.JUSO_API_KEY, currentPage: 1, countPerPage: size, keyword, resultType: 'json' },
     timeout: 7000
   });
   return response.data?.results;
 }
+function _norm(s) { return String(s || '').replace(/\s+/g, '').trim(); }
+function regionMatchesCandidate(item, comp) {
+  const si = _norm(item.siNm);
+  const sgg = _norm(item.sggNm);
+  const emd = _norm(item.emdNm || '');
+  const li = _norm(item.liNm || '');
+  const inSi = _norm(comp.sido);
+  const inSgg = _norm(comp.sigungu);
+  const inEmd = _norm(comp.dong);
+  const inLi = _norm(comp.ri);
+  if (inSi && si && si !== inSi) return false;
+  if (inSgg && sgg && sgg !== inSgg) return false;
+  // 읍/면/동 지정 시 반드시 일치
+  if (inEmd && emd && emd !== inEmd) return false;
+  // 리 정보가 있으면 li 또는 주소 문자열에 포함되는지 확인
+  if (inLi) {
+    const addrStr = _norm((item.roadAddr || '') + (item.jibunAddr || ''));
+    if (li && li !== inLi && !addrStr.includes(inLi)) return false;
+  }
+  return true;
+}
+function candidateScore(item, input, base) {
+  const t = (item.roadAddr || '') + ' ' + (item.jibunAddr || '') + ' ' + (item.bdNm || '');
+  const a = _norm(input).toLowerCase();
+  const b = _norm(t).toLowerCase();
+  let common = 0;
+  const aw = a.split(/(?=[가-힣A-Za-z0-9])/).filter(Boolean);
+  const bw = b.split(/(?=[가-힣A-Za-z0-9])/).filter(Boolean);
+  aw.forEach(w => { if (w.length > 1 && b.includes(w)) common += w.length; });
+  let score = common;
+  if (base && b.includes(_norm(base).toLowerCase())) score += 50;
+  // 도로명/번지 숫자 일치 가산(간단)
+  const num = input.match(/\d{1,4}(-\d{1,4})?/);
+  if (num && b.includes(num[0].replace(/\s+/g,''))) score += 20;
+  return score;
+}
 async function jusoSearchWithFallback(address) {
   try {
-    const results = await jusoSearch(address);
-    if (results?.common?.errorCode === '0' && Array.isArray(results?.juso) && results.juso.length > 0) return results;
     const comp = extractComponents(address);
     const base = extractBuildingBase(address);
+    const primary = await jusoSearch(address, 50).catch(() => null);
+    let list = Array.isArray(primary?.juso) ? primary.juso : [];
+    list = list.filter(it => regionMatchesCandidate(it, comp));
+    if (primary?.common?.errorCode === '0' && list.length > 0) {
+      list.sort((a, b) => candidateScore(b, address, base) - candidateScore(a, address, base));
+      return { common: primary.common, juso: list };
+    }
     const region = comp.sigungu || comp.sido || '';
     if (base && region) {
       const tries = [`${region} ${base} 아파트`, `${region} ${base}`];
       for (const k of tries) {
-        const r = await jusoSearch(k).catch(() => null);
-        if (r?.common?.errorCode === '0' && Array.isArray(r?.juso) && r.juso.length > 0) return r;
+        const r = await jusoSearch(k, 50).catch(() => null);
+        if (r?.common?.errorCode === '0' && Array.isArray(r?.juso) && r.juso.length > 0) {
+          let cand = r.juso.filter(it => regionMatchesCandidate(it, comp));
+          if (cand.length === 0) continue;
+          cand.sort((a, b) => candidateScore(b, address, base) - candidateScore(a, address, base));
+          return { common: r.common, juso: cand };
+        }
       }
     }
-    return results;
+    return primary;
   } catch (e) {
     return null;
   }
