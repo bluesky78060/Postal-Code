@@ -795,14 +795,16 @@ app.get('/api/file/status/:jobId', async (req, res) => {
             } else {
               job.errors.push({ row: i + 2, address, error: '우편번호를 찾을 수 없습니다' });
             }
+          } else {
+            job.errors.push({ row: i + 2, address, error: '우편번호를 찾을 수 없습니다' });
           }
-          catch (apiError) {
-            job.errors.push({ 
-              row: i + 2, 
-              address: address,
-              error: 'API 호출 실패: ' + apiError.message 
-            });
-          }
+        } catch (apiError) {
+          job.errors.push({ 
+            row: i + 2, 
+            address: address,
+            error: 'API 호출 실패: ' + apiError.message 
+          });
+        }
 
           job.processed = i + 1;
           
