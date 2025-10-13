@@ -842,85 +842,54 @@ app.get('/api/file/download/:jobId', (req, res) => {
       const XLSX = require('xlsx');
 
       console.log('Generating Excel file for jobId:', jobId);
-      console.log('Job data:', { 
-        headersLength: job.headers?.length, 
-        rowsLength: job.rows?.length, 
-        resultsLength: job.results?.length 
+      console.log('Job data:', {
+        headersLength: job.headers?.length,
+        rowsLength: job.rows?.length,
+        resultsLength: job.results?.length
       });
-      
-      // 안전한 헤더 처리 및 정렬 재구성
-      const originalHeaders = Array.isArray(job.headers) ? job.headers : [];
-      const norm = s => String(s || '').toLowerCase().replace(/[\s_\//]/g, '');
-      const isAdminHeader = h => {
-        const n = norm(h);
-        return n.includes('시도') || n.includes('sido') || n.includes('시군구') || n.includes('sigungu') || n.includes('광역시') || n.includes('특별시');
-      };
-      const isRoadHeader = h => {
-        const n = norm(h);
-        return n.includes('도로명주소') || n.includes('road') || n.includes('fulladdress') || n.includes('전체주소');
-      };
-      const isDetailHeader = h => {
-        const n = norm(h);
-        return n.includes('상세주소') || n.includes('세부주소') || n.includes('동호') || n.includes('호수') || n.includes('호실');
-      };
-      const isPostalHeader = h => {
-        const n = norm(h);
-        return n.includes('우편번호') || n.includes('postal') || n.includes('zip');
-      };
-      // 시도/시군구 제거
-      const filteredHeaders = originalHeaders.filter(h => !isAdminHeader(h));
-      // 주소/상세/우편/도로명 헤더 제거하여 베이스 구성
-      const baseHeaders = filteredHeaders.filter(h => !isRoadHeader(h) && !isDetailHeader(h) && !isPostalHeader(h));
-      // 주소 컬럼 인덱스(업로드 시 저장)
-      const addressIndex = typeof job.addressColumnIndex === 'number' ? job.addressColumnIndex : originalHeaders.findIndex(h => String(h).includes('주소'));
 
-      // 최종 헤더: [베이스, 도로명주소, 상세주소, 우편번호]
-      const newHeaders = [...baseHeaders, '도로명주소', '상세주소', '우편번호'];
-      
+      const originalHeaders = Array.isArray(job.headers) ? job.headers : [];
+      const rows = Array.isArray(job.rows) ? job.rows : [];
+      const addressColumnIndex = job.addressColumnIndex || 0;
+
+      // 시도/시군구 제외한 헤더 생성
+      const newHeaders = originalHeaders.filter(h => {
+        const lower = String(h).toLowerCase();
+        return !lower.includes('시도') && !lower.includes('시/도') && !lower.includes('sido') &&
+               !lower.includes('시군구') && !lower.includes('시/군/구') && !lower.includes('sigungu');
+      });
+      newHeaders.push('도로명주소', '상세주소', '우편번호');
+
       // 결과 데이터를 엑셀 형식으로 변환
       const resultData = [newHeaders];
 
       // 원본 데이터에 우편번호 정보 추가
-      if (Array.isArray(job.rows)) {
-        job.rows.forEach((row, index) => {
-          const result = job.results?.find(r => r.row === index + 2);
-          const rowArray = Array.isArray(row) ? row : Object.values(row || {});
-          // 베이스 필드 채우기 (관리/중복 필드 제외, 기존 순서 유지)
-          const baseOut = baseHeaders.map(h => {
-            const idx = originalHeaders.indexOf(h);
-            return idx >= 0 ? (rowArray[idx] ?? '') : '';
-          });
+      rows.forEach((row, index) => {
+        const result = job.results?.find(r => r.row === index + 2);
+        const originalRow = Array.isArray(row) ? [...row] : Object.values(row || {});
 
-          // 상세주소 계산: 기존 상세가 있더라도 동/호/층 등 유닛 정보만 사용
-          const detailHeaderIndex = originalHeaders.findIndex(h => isDetailHeader(h));
-          let detailValue = '';
-          if (detailHeaderIndex !== -1) {
-            const v = rowArray[detailHeaderIndex];
-            const sanitized = splitAddressDetail(String(v || '')).detail;
-            detailValue = (sanitized && String(sanitized).trim()) ? String(sanitized).trim() : '';
-          }
-          if (!detailValue) {
-            const addr = addressIndex >= 0 ? (rowArray[addressIndex] || '') : '';
-            const { detail } = splitAddressDetail(addr);
-            detailValue = detail || '';
-          }
-          if (!detailValue) {
-            const dongIndex = originalHeaders.findIndex(h => /(^|[^가-힣])동$|dong$/i.test(norm(h)) || norm(h).endsWith('동'));
-            const hoIndex = originalHeaders.findIndex(h => norm(h).endsWith('호') || /hosu|room|unit/i.test(norm(h)));
-            const parts = [];
-            const dv = dongIndex >= 0 ? (rowArray[dongIndex] ?? '') : '';
-            const hv = hoIndex >= 0 ? (rowArray[hoIndex] ?? '') : '';
-            if (dv && String(dv).trim()) parts.push(`${String(dv).trim()}동`);
-            if (hv && String(hv).trim()) parts.push(`${String(hv).trim()}호`);
-            if (parts.length) detailValue = parts.join(' ');
-          }
+        // 원본 주소에서 상세주소 추출
+        const originalAddress = originalRow[addressColumnIndex] || '';
+        const { detail } = splitAddressDetail(originalAddress);
 
-          const roadVal = result ? (result.fullAddress || '') : '';
-          const postalVal = result ? (result.postalCode || '') : '';
-          // 최종 컬럼 순서: [베이스..., 도로명주소, 상세주소, 우편번호]
-          resultData.push([...baseOut, roadVal, detailValue || '', postalVal]);
+        // 시도/시군구를 제외한 원본 데이터 복사
+        const newRow = [];
+        originalHeaders.forEach((h, idx) => {
+          const lower = String(h).toLowerCase();
+          const isSidoOrSigungu = lower.includes('시도') || lower.includes('시/도') || lower.includes('sido') ||
+                                  lower.includes('시군구') || lower.includes('시/군/구') || lower.includes('sigungu');
+          if (!isSidoOrSigungu) {
+            newRow.push(originalRow[idx] || '');
+          }
         });
-      }
+
+        // 새 컬럼 추가: 도로명주소, 상세주소, 우편번호
+        newRow.push(result ? (result.fullAddress || '') : '');
+        newRow.push(detail || '');
+        newRow.push(result ? (result.postalCode || '') : '');
+
+        resultData.push(newRow);
+      });
 
       console.log('Result data rows:', resultData.length);
 
