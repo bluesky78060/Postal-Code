@@ -230,7 +230,7 @@ if (!global.excelJobs) {
   global.excelJobs = {};
 }
 
-// JUSO 검색 유틸 및 폴백(지역+건물명)
+// JUSO 검색 유틸 (폴백은 비활성화 가능하며, 기본은 직접검색만 수행)
 const BUILDING_KEYWORDS = [
   '아파트','apt','빌라','빌리지','오피스텔','주상복합','상가',
   '타워','캐슬','파크','팰리스','하이츠','하이빌','메트로',
@@ -317,32 +317,37 @@ function candidateScore(item, input, base) {
 }
 async function jusoSearchWithFallback(address) {
   try {
-    const comp = extractComponents(address);
-    const base = extractBuildingBase(address);
+    // Fallback 비활성화: 직접 검색만 수행하고 검증 통과 후보가 없으면 실패 처리
     const primary = await jusoSearch(address, 50).catch(() => null);
-    let list = Array.isArray(primary?.juso) ? primary.juso : [];
-    list = list.filter(it => regionMatchesCandidate(it, comp));
-    if (primary?.common?.errorCode === '0' && list.length > 0) {
-      list.sort((a, b) => candidateScore(b, address, base) - candidateScore(a, address, base));
-      return { common: primary.common, juso: list };
-    }
-    const region = comp.sigungu || comp.sido || '';
-    if (base && region) {
-      const tries = [`${region} ${base} 아파트`, `${region} ${base}`];
-      for (const k of tries) {
-        const r = await jusoSearch(k, 50).catch(() => null);
-        if (r?.common?.errorCode === '0' && Array.isArray(r?.juso) && r.juso.length > 0) {
-          let cand = r.juso.filter(it => regionMatchesCandidate(it, comp));
-          if (cand.length === 0) continue;
-          cand.sort((a, b) => candidateScore(b, address, base) - candidateScore(a, address, base));
-          return { common: r.common, juso: cand };
-        }
-      }
-    }
     return primary;
   } catch (e) {
     return null;
   }
+}
+
+// 입력 주소와 후보 결과의 일치 여부를 엄격 검증
+function extractNumbersToken(s) {
+  const m = String(s || '').match(/\d{1,4}(?:-\d{1,4})?/);
+  return m ? m[0] : '';
+}
+function extractRoadFromInput(s) {
+  const m = String(s || '').match(/([^\s]+(?:로|길))/);
+  return m ? m[1] : '';
+}
+function verifyJusoCandidate(input, item) {
+  // 지역 일치: 시/도, 시/군/구 필수. 읍/면/동/리는 있으면 일치 요구.
+  const comp = extractComponents(input);
+  if (!regionMatchesCandidate(item, comp)) return false;
+  // 주소 핵심 토큰 일치: 리/도로명/번지 중 하나 이상 포함
+  const addrStr = ((item.roadAddr || '') + ' ' + (item.jibunAddr || '')).replace(/\s+/g, '');
+  const riToken = (comp.ri || comp.dong || '').replace(/\s+/g, '');
+  const roadToken = extractRoadFromInput(input).replace(/\s+/g, '');
+  const numToken = extractNumbersToken(input);
+  let ok = false;
+  if (riToken && addrStr.includes(riToken)) ok = true;
+  if (!ok && roadToken && addrStr.includes(roadToken)) ok = true;
+  if (!ok && numToken && addrStr.includes(numToken.replace(/\s+/g, ''))) ok = true;
+  return ok;
 }
 
 app.post('/api/file/upload', upload.single('file'), async (req, res) => {
@@ -507,26 +512,31 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         }
 
         try {
-          // JUSO API 호출 (+건물명 폴백)
-          const results = await jusoSearchWithFallback(address);
+          // 1) 상세(동/호/층) 제거한 메인 주소로 직접 검색
+          const { main } = splitAddressDetail(address);
+          const results = await jusoSearch(main || address, 50);
           const common = results?.common;
           
-          if (common?.errorCode === '0' && results.juso?.[0]) {
-            const juso = results.juso[0];
-            jobData.results.push({
-              row: i + 2,
-              originalAddress: address,
-              postalCode: juso.zipNo || '',
-              fullAddress: juso.roadAddr || juso.jibunAddr || '',
-              sido: juso.siNm || '',
-              sigungu: juso.sggNm || ''
-            });
-          } else {
-            jobData.errors.push({ 
-              row: i + 2, 
-              address: address,
-              error: '우편번호를 찾을 수 없습니다' 
-            });
+          if (common?.errorCode === '0' && Array.isArray(results?.juso)) {
+            // 2) 후보에서 입력과 엄격 일치 검증 통과하는 첫 건만 채택
+            const cand = results.juso.find(it => verifyJusoCandidate(address, it));
+            if (cand) {
+              const juso = cand;
+              jobData.results.push({
+                row: i + 2,
+                originalAddress: address,
+                postalCode: juso.zipNo || '',
+                fullAddress: juso.roadAddr || juso.jibunAddr || '',
+                sido: juso.siNm || '',
+                sigungu: juso.sggNm || ''
+              });
+            } else {
+              jobData.errors.push({ 
+                row: i + 2, 
+                address: address,
+                error: '우편번호를 찾을 수 없습니다' 
+              });
+            }
           }
         } catch (apiError) {
           jobData.errors.push({ 
@@ -698,12 +708,16 @@ app.get('/api/file/status/:jobId', async (req, res) => {
           }
 
         try {
-          // JUSO API 호출 (+건물명 폴백)
-          const results = await jusoSearchWithFallback(address);
+          // 1) 상세 제거한 메인 주소로 직접 검색
+          const { main } = splitAddressDetail(address);
+          const results = await jusoSearch(main || address, 50);
           const common = results?.common;
-            
-            if (common?.errorCode === '0' && results?.juso?.[0]) {
-              const juso = results.juso[0];
+          
+          if (common?.errorCode === '0' && Array.isArray(results?.juso)) {
+            // 2) 후보에서 입력과 엄격 일치 검증 통과하는 첫 건만 채택
+            const cand = results.juso.find(it => verifyJusoCandidate(address, it));
+            if (cand) {
+              const juso = cand;
               job.results.push({
                 row: i + 2,
                 originalAddress: address,
@@ -713,11 +727,7 @@ app.get('/api/file/status/:jobId', async (req, res) => {
                 sigungu: juso.sggNm || ''
               });
             } else {
-              job.errors.push({ 
-                row: i + 2, 
-                address: address,
-                error: '우편번호를 찾을 수 없습니다' 
-              });
+              job.errors.push({ row: i + 2, address, error: '우편번호를 찾을 수 없습니다' });
             }
           } catch (apiError) {
             job.errors.push({ 
