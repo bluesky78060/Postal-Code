@@ -455,90 +455,52 @@
     }
     lastLabelStatus = null;
 
-    console.log('파일 처리 시작:', file.name);
+    console.log('라벨 파일 처리 시작 (클라이언트 전용):', file.name);
 
     // 진행 상황 표시
     document.getElementById('labelUploadProgress').classList.remove('hidden');
-    updateProgressCard('label', { progress: 10, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 업로드 중...');
+    updateProgressCard('label', { progress: 10, processed: 0, total: 0, steps: cloneProgressSteps('upload') }, '파일 읽는 중...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      console.log('API 호출:', `${API_BASE}/file/upload?mode=label`);
-      const response = await fetch(`${API_BASE}/file/upload?mode=label`, { method: 'POST', body: formData });
-
-      // content-type을 먼저 확인하여 응답 형식 판단
-      const ct = response.headers.get('content-type') || '';
-      const cd = response.headers.get('content-disposition') || '';
-
-      if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
-        // Excel 파일 다운로드 응답 (배포판 - 즉시 처리 완료)
-        console.log('배포판: 즉시 Excel 파일 다운로드');
-        updateProgressCard('label', { progress: 90, steps: cloneProgressSteps('export') }, '파일 생성 완료...');
-
-        const blob = await response.blob();
-
-        // Excel 파일을 읽어서 라벨 데이터로 변환
-        try {
-          const arrayBuffer = await blob.arrayBuffer();
-          const XLSX = window.XLSX || (await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js'));
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-          if (jsonData.length > 0) {
-            const headers = jsonData[0];
-            const rows = jsonData.slice(1);
-            labelData = { headers, rows };
-            currentLabelJobId = 'vercel_' + Date.now();
-
-            updateProgressCard('label', { progress: 100, steps: cloneProgressSteps('export') }, '처리 완료!');
-            document.getElementById('labelUploadProgress').classList.add('hidden');
-            showLabelDataPreview();
-            return;
-          }
-        } catch (xlsxError) {
-          console.error('Excel 파일 읽기 실패:', xlsxError);
-          // Excel 파일만 다운로드하고 라벨 미리보기는 샘플로 대체
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'postal_result.xlsx';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-
-          updateProgressCard('label', { progress: 100, steps: cloneProgressSteps('export') }, '다운로드 완료!');
-          document.getElementById('labelUploadProgress').classList.add('hidden');
-
-          // 샘플 데이터로 라벨 미리보기
-          labelData = generateSampleData();
-          showLabelDataPreview();
-          return;
-        }
+      // XLSX 라이브러리 확인
+      if (!window.XLSX) {
+        throw new Error('XLSX 라이브러리가 로드되지 않았습니다.');
       }
 
-      // JSON 응답 (로컬 환경 - job tracking)
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        throw new Error('서버 응답을 읽을 수 없습니다: ' + e.message);
+      // 파일을 ArrayBuffer로 읽기
+      updateProgressCard('label', { progress: 30, steps: cloneProgressSteps('upload') }, '엑셀 파일 파싱 중...');
+      const arrayBuffer = await file.arrayBuffer();
+
+      // XLSX로 파싱
+      updateProgressCard('label', { progress: 50, steps: cloneProgressSteps('dedupe') }, '데이터 추출 중...');
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (jsonData.length === 0) {
+        throw new Error('엑셀 파일이 비어있습니다.');
       }
 
-      console.log('서버 응답:', data);
+      // 헤더와 데이터 분리
+      updateProgressCard('label', { progress: 80, steps: cloneProgressSteps('export') }, '라벨 데이터 생성 중...');
+      const headers = jsonData[0];
+      const rows = jsonData.slice(1);
 
-      if (data.success) {
-        const jobId = data.data.jobId;
-        currentLabelJobId = jobId;
-        console.log('JobID:', jobId);
-        updateProgressCard('label', { progress: 20, processed: 0, total: 0, steps: cloneProgressSteps('dedupe') }, '파일 처리 중...');
-        await waitForLabelProcessing(jobId);
-      } else {
+      // 라벨 데이터 설정
+      labelData = { headers, rows };
+      currentLabelJobId = 'client_' + Date.now();
+
+      console.log('라벨 데이터 생성 완료:', { headers, rowCount: rows.length });
+
+      // 완료
+      updateProgressCard('label', { progress: 100, steps: cloneProgressSteps('export') }, '처리 완료!');
+
+      setTimeout(() => {
         document.getElementById('labelUploadProgress').classList.add('hidden');
-        alert('파일 업로드 실패: ' + data.error);
-      }
+        showLabelDataPreview();
+      }, 300);
+
     } catch (error) {
       console.error('파일 처리 오류:', error);
       document.getElementById('labelUploadProgress').classList.add('hidden');
@@ -552,105 +514,9 @@
     }
   }
 
-  async function waitForLabelProcessing(jobId) {
-    try {
-      const response = await fetch(`${API_BASE}/file/status/${jobId}`);
-      const data = await response.json();
-      
-      if (data.success) {
-        const status = data.data;
-        updateProgressCard('label', status);
-        
-        if (status.status === 'completed') {
-          document.getElementById('labelUploadProgress').classList.add('hidden');
-          lastLabelStatus = status;
-          // 처리된 파일에서 데이터 추출
-          await loadLabelData(jobId);
-        } else if (status.status === 'processing') {
-          setTimeout(() => waitForLabelProcessing(jobId), 2000);
-        } else {
-          document.getElementById('labelUploadProgress').classList.add('hidden');
-          alert('파일 처리 실패: ' + status.error);
-        }
-      }
-    } catch (error) {
-      document.getElementById('labelUploadProgress').classList.add('hidden');
-      lastLabelStatus = null;
-      alert('상태 확인 중 오류: ' + error.message);
-    }
-  }
-
-  async function loadLabelData(jobId) {
-    try {
-      console.log('라벨 데이터 로드 시작:', jobId);
-      // 새로운 label-data API 엔드포인트 사용
-      const response = await fetch(`${API_BASE}/file/label-data/${jobId}`);
-
-      if (!response.ok) {
-        throw new Error(`API 오류: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.success) {
-        console.log('라벨 데이터 로드 성공:', data.data);
-        labelData = {
-          headers: data.data.headers,
-          rows: data.data.rows
-        };
-        showLabelDataPreview();
-      } else {
-        throw new Error(data.error || '데이터 로드 실패');
-      }
-    } catch (error) {
-      console.error('데이터 로드 실패:', error);
-      console.log('Excel 다운로드 후 파싱으로 대체 시도...');
-
-      // label-data API 실패 시 Excel 파일을 다운로드해서 파싱
-      try {
-        const downloadResponse = await fetch(`${API_BASE}/file/download/${jobId}`);
-
-        if (!downloadResponse.ok) {
-          throw new Error('Excel 다운로드 실패');
-        }
-
-        const ct = downloadResponse.headers.get('content-type') || '';
-        const cd = downloadResponse.headers.get('content-disposition') || '';
-
-        if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
-          const blob = await downloadResponse.blob();
-
-          // XLSX로 파싱
-          const arrayBuffer = await blob.arrayBuffer();
-          const XLSX = window.XLSX;
-          if (!XLSX) {
-            throw new Error('XLSX 라이브러리가 로드되지 않았습니다');
-          }
-
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-          if (jsonData.length > 0) {
-            const headers = jsonData[0];
-            const rows = jsonData.slice(1);
-            labelData = { headers, rows };
-            console.log('Excel 파싱 성공:', { headers, rowCount: rows.length });
-            showLabelDataPreview();
-            return;
-          }
-        }
-
-        throw new Error('Excel 파싱 실패');
-      } catch (downloadError) {
-        console.error('Excel 다운로드/파싱 실패:', downloadError);
-        alert('데이터 로드에 실패했습니다. 샘플 데이터를 사용합니다.');
-        labelData = generateSampleData();
-        showLabelDataPreview();
-      }
-    }
-  }
+  // 더 이상 사용하지 않음 - 라벨 출력은 클라이언트에서만 처리
+  // async function waitForLabelProcessing(jobId) { ... }
+  // async function loadLabelData(jobId) { ... }
 
   function generateSampleData() {
     return [
