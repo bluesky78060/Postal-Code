@@ -230,6 +230,69 @@ if (!global.excelJobs) {
   global.excelJobs = {};
 }
 
+// JUSO 검색 유틸 및 폴백(지역+건물명)
+function extractComponents(address) {
+  const norm = String(address || '').trim();
+  const parts = norm.split(/\s+/).filter(Boolean);
+  const comp = { sido: '', sigungu: '', dong: '' };
+  const sidoSuffixes = ['특별시','광역시','특별자치시','도','특별자치도'];
+  for (let i = 0; i < parts.length; i++) {
+    if (sidoSuffixes.some(s => parts[i].endsWith(s))) {
+      comp.sido = parts[i];
+      if (i+1 < parts.length && /(시|군|구)$/.test(parts[i+1])) comp.sigungu = parts[i+1];
+      break;
+    }
+  }
+  for (let i = 0; i < parts.length; i++) { if (/(동|읍|면)$/.test(parts[i])) { comp.dong = parts[i]; break; } }
+  return comp;
+}
+function extractBuildingBase(address) {
+  const text = String(address || '').trim();
+  const cleaned = text.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokens = cleaned.split(' ').filter(Boolean);
+  const aptIdx = tokens.findIndex(t => /(아파트|빌라|APT)/i.test(t));
+  if (aptIdx > 0) {
+    const base = tokens[aptIdx - 1].replace(/[A-Za-z]+$/g, '').replace(/동$/, '');
+    if (base && base.length >= 2) return base;
+  }
+  for (const t of tokens) {
+    if (/^[A-Za-z가-힣]+[A-Za-z]?동$/i.test(t)) {
+      const b = t.replace(/[A-Za-z]+$/g, '').replace(/동$/i, '');
+      if (b && b.length >= 2) return b;
+    }
+  }
+  const exclude = /(시|군|구|동|읍|면|리|로|길|가|번|호)$/;
+  const cand = tokens.find(t => !/\d/.test(t) && !exclude.test(t) && t.length >= 2);
+  return cand || '';
+}
+async function jusoSearch(keyword) {
+  const axios = require('axios');
+  const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+    params: { confmKey: process.env.JUSO_API_KEY, currentPage: 1, countPerPage: 1, keyword, resultType: 'json' },
+    timeout: 7000
+  });
+  return response.data?.results;
+}
+async function jusoSearchWithFallback(address) {
+  try {
+    const results = await jusoSearch(address);
+    if (results?.common?.errorCode === '0' && Array.isArray(results?.juso) && results.juso.length > 0) return results;
+    const comp = extractComponents(address);
+    const base = extractBuildingBase(address);
+    const region = comp.sigungu || comp.sido || '';
+    if (base && region) {
+      const tries = [`${region} ${base} 아파트`, `${region} ${base}`];
+      for (const k of tries) {
+        const r = await jusoSearch(k).catch(() => null);
+        if (r?.common?.errorCode === '0' && Array.isArray(r?.juso) && r.juso.length > 0) return r;
+      }
+    }
+    return results;
+  } catch (e) {
+    return null;
+  }
+}
+
 app.post('/api/file/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -392,20 +455,8 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         }
 
         try {
-          // JUSO API 호출
-          const axios = require('axios');
-          const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
-            params: {
-              confmKey: process.env.JUSO_API_KEY,
-              currentPage: 1,
-              countPerPage: 1,
-              keyword: address,
-              resultType: 'json'
-            },
-            timeout: 5000
-          });
-
-          const results = response.data?.results;
+          // JUSO API 호출 (+건물명 폴백)
+          const results = await jusoSearchWithFallback(address);
           const common = results?.common;
           
           if (common?.errorCode === '0' && results.juso?.[0]) {
@@ -594,24 +645,12 @@ app.get('/api/file/status/:jobId', async (req, res) => {
             continue;
           }
 
-          try {
-            // JUSO API 호출
-            const axios = require('axios');
-            const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
-              params: {
-                confmKey: process.env.JUSO_API_KEY,
-                currentPage: 1,
-                countPerPage: 1,
-                keyword: address,
-                resultType: 'json'
-              },
-              timeout: 5000
-            });
-
-            const results = response.data?.results;
-            const common = results?.common;
+        try {
+          // JUSO API 호출 (+건물명 폴백)
+          const results = await jusoSearchWithFallback(address);
+          const common = results?.common;
             
-            if (common?.errorCode === '0' && results.juso?.[0]) {
+            if (common?.errorCode === '0' && results?.juso?.[0]) {
               const juso = results.juso[0];
               job.results.push({
                 row: i + 2,
@@ -792,12 +831,13 @@ app.get('/api/file/download/:jobId', (req, res) => {
             return idx >= 0 ? (rowArray[idx] ?? '') : '';
           });
 
-          // 상세주소 계산: 기존 상세주소가 있으면 사용, 없으면 주소 파싱/동/호 조합
+          // 상세주소 계산: 기존 상세가 있더라도 동/호/층 등 유닛 정보만 사용
           const detailHeaderIndex = originalHeaders.findIndex(h => isDetailHeader(h));
           let detailValue = '';
           if (detailHeaderIndex !== -1) {
             const v = rowArray[detailHeaderIndex];
-            detailValue = (v && String(v).trim()) ? String(v).trim() : '';
+            const sanitized = splitAddressDetail(String(v || '')).detail;
+            detailValue = (sanitized && String(sanitized).trim()) ? String(sanitized).trim() : '';
           }
           if (!detailValue) {
             const addr = addressIndex >= 0 ? (rowArray[addressIndex] || '') : '';

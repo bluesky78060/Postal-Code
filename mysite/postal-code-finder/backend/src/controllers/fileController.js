@@ -228,13 +228,8 @@ class FileController {
         const { main: splitMainAddress, detail: splitDetail } = addressParser.splitAddressDetail(address);
         const mainAddress = splitMainAddress || (row[addressColumnIndex] ?? '');
         const derivedDetail = splitDetail;
-        let enrichedAddress = mainAddress;
-        if (derivedDetail) {
-          const trimmedDetail = derivedDetail.trim();
-          if (trimmedDetail && !enrichedAddress.includes(trimmedDetail)) {
-            enrichedAddress = `${enrichedAddress} ${trimmedDetail}`.replace(/\s+/g, ' ').trim();
-          }
-        }
+        // 주소 컬럼은 메인 주소만 사용 (상세는 별도 컬럼)
+        const enrichedAddress = mainAddress;
 
         // 베이스 데이터: 기존 컬럼 값 복사 (주소 컬럼은 enrichedAddress 사용)
         const baseRow = baseHeaders.map(h => {
@@ -251,7 +246,8 @@ class FileController {
             let detailOut = '';
             if (detailColumnIndex !== -1) {
               const existing = row[detailColumnIndex];
-              detailOut = (existing && String(existing).trim()) ? String(existing).trim() : '';
+              const sanitized = addressParser.splitAddressDetail(String(existing || '')).detail;
+              detailOut = (sanitized && String(sanitized).trim()) ? String(sanitized).trim() : '';
             }
             if (!detailOut) detailOut = derivedDetail || '';
             if (!detailOut) {
