@@ -324,6 +324,46 @@ async function jusoSearchWithFallback(address) {
     return null;
   }
 }
+// 상세(동/호/층/하이픈호수)만 추출하고 메인 주소를 분리 (모듈 범위)
+function splitAddressDetail(address) {
+  if (!address || typeof address !== 'string') return { main: '', detail: '' };
+  let main = String(address).trim();
+  const detailParts = [];
+  const isUnitToken = (txt) => {
+    const s = String(txt || '').trim();
+    if (!s) return false;
+    if (/(동|호|층)/i.test(s) && /\d/.test(s)) return true;
+    if (/^[A-Za-z]?\d{1,4}-\d{1,4}(\s*(호|층))?$/i.test(s)) return true;
+    return false;
+  };
+  // 괄호 안 유닛만 상세로 이동
+  main = main.replace(/\(([^)]+)\)/g, (_, inner) => { const t = inner.trim(); if (isUnitToken(t)) detailParts.push(t); return ''; });
+  // 콤마 뒤 유닛 이동
+  const segs = main.split(',').map(s => s.trim()).filter(Boolean);
+  if (segs.length > 1) {
+    const last = segs[segs.length - 1];
+    if (isUnitToken(last)) { detailParts.push(last); segs.pop(); main = segs.join(', '); }
+  }
+  // 끝부분 토큰 추출
+  const tokens = main.split(' ').filter(Boolean);
+  const tail = [];
+  while (tokens.length) {
+    const tk = tokens[tokens.length - 1];
+    if (/\d/.test(tk) && /(동|호|층)$/i.test(tk)) { tail.unshift(tk); tokens.pop(); continue; }
+    if (/^[A-Za-z가-힣]+동$/i.test(tk) && tail.length) { tail.unshift(tk); tokens.pop(); continue; }
+    break;
+  }
+  if (tail.length) { const t = tail.join(' ').trim(); if (isUnitToken(t)) detailParts.push(t); main = tokens.join(' ').trim(); }
+  // 하이픈형
+  if (!detailParts.length) {
+    const m = main.match(/(?:\s|^)([A-Za-z]?\d{1,4}-\d{1,4}(?:\s*(?:호|층))?)\s*$/);
+    if (m && m[1]) { const seg = m[1].trim(); if (isUnitToken(seg)) { detailParts.push(seg); main = main.slice(0, m.index).trim(); } }
+  }
+  const filtered = detailParts.filter(isUnitToken);
+  const detail = filtered.join(' ').replace(/\s{2,}/g, ' ').trim();
+  main = main.replace(/\s{2,}/g, ' ').trim();
+  return { main, detail };
+}
 
 // 입력 주소와 후보 결과의 일치 여부를 엄격 검증
 function extractNumbersToken(s) {
@@ -802,46 +842,6 @@ app.get('/api/file/download/:jobId', (req, res) => {
     try {
       // 엑셀 파일 생성
       const XLSX = require('xlsx');
-      // 상세주소 추출 유틸(간단 버전)
-      function splitAddressDetail(address) {
-        if (!address || typeof address !== 'string') return { main: '', detail: '' };
-        let main = String(address).trim();
-        const detailParts = [];
-        const isUnitToken = (txt) => {
-          const s = String(txt || '').trim();
-          if (!s) return false;
-          if (/(동|호|층)/i.test(s) && /\d/.test(s)) return true;
-          if (/^[A-Za-z]?\d{1,4}-\d{1,4}(\s*(호|층))?$/i.test(s)) return true;
-          return false;
-        };
-        // 괄호 안 내용: 동/호/층일 때만 상세로 이동
-        main = main.replace(/\(([^)]+)\)/g, (_, inner) => { const t = inner.trim(); if (isUnitToken(t)) detailParts.push(t); return ''; });
-        // 콤마 뒤 동/호 패턴 이동
-        const segs = main.split(',').map(s => s.trim()).filter(Boolean);
-        if (segs.length > 1) {
-          const last = segs[segs.length - 1];
-          if (isUnitToken(last)) { detailParts.push(last); segs.pop(); main = segs.join(', '); }
-        }
-        // 끝부분 토큰에서 동/호/층 추출
-        const tokens = main.split(' ').filter(Boolean);
-        const tail = [];
-        while (tokens.length) {
-          const tk = tokens[tokens.length - 1];
-          if (/\d/.test(tk) && /(동|호|층)$/i.test(tk)) { tail.unshift(tk); tokens.pop(); continue; }
-          if (/^[A-Za-z가-힣]+동$/i.test(tk) && tail.length) { tail.unshift(tk); tokens.pop(); continue; }
-          break;
-        }
-        if (tail.length) { const t = tail.join(' ').trim(); if (isUnitToken(t)) detailParts.push(t); main = tokens.join(' ').trim(); }
-        // 하이픈 패턴 (101-1203 등)
-        if (!detailParts.length) {
-          const m = main.match(/(?:\s|^)([A-Za-z]?\d{1,4}-\d{1,4}(?:\s*(?:호|층))?)\s*$/);
-          if (m && m[1]) { const seg = m[1].trim(); if (isUnitToken(seg)) { detailParts.push(seg); main = main.slice(0, m.index).trim(); } }
-        }
-        const filtered = detailParts.filter(isUnitToken);
-        const detail = filtered.join(' ').replace(/\s{2,}/g, ' ').trim();
-        main = main.replace(/\s{2,}/g, ' ').trim();
-        return { main, detail };
-      }
 
       console.log('Generating Excel file for jobId:', jobId);
       console.log('Job data:', { 
