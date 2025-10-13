@@ -581,7 +581,10 @@ class FileController {
     try {
       const { jobId } = req.params;
       
-      const job = processingJobs.get(jobId);
+      let job = processingJobs.get(jobId);
+      if (!job) {
+        job = await loadJobSnapshot(jobId);
+      }
       
       if (!job || job.status !== 'completed') {
         return res.status(404).json({
