@@ -501,8 +501,19 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         }
 
         try {
-          // JUSO API 호출 (+건물명 폴백)
-          const results = await jusoSearchWithFallback(address);
+          // JUSO API 단건 호출 (폴백 사용 안 함)
+          const axios = require('axios');
+          const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+            params: {
+              confmKey: process.env.JUSO_API_KEY,
+              currentPage: 1,
+              countPerPage: 1,
+              keyword: address,
+              resultType: 'json'
+            },
+            timeout: 7000
+          });
+          const results = response.data?.results;
           const common = results?.common;
           
           if (common?.errorCode === '0' && results.juso?.[0]) {
@@ -692,8 +703,19 @@ app.get('/api/file/status/:jobId', async (req, res) => {
           }
 
         try {
-          // JUSO API 호출 (+건물명 폴백)
-          const results = await jusoSearchWithFallback(address);
+          // JUSO API 단건 호출 (폴백 사용 안 함)
+          const axios = require('axios');
+          const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
+            params: {
+              confmKey: process.env.JUSO_API_KEY,
+              currentPage: 1,
+              countPerPage: 1,
+              keyword: address,
+              resultType: 'json'
+            },
+            timeout: 7000
+          });
+          const results = response.data?.results;
           const common = results?.common;
             
             if (common?.errorCode === '0' && results?.juso?.[0]) {
