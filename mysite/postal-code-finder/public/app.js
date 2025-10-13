@@ -986,19 +986,28 @@
   function closeLabelModal() {
     const modal = document.getElementById('labelModal');
     const appContainer = document.querySelector('.container');
-    // 먼저 포커스를 모달 밖으로 이동
+
+    // 먼저 이벤트 리스너 제거
+    if (modal && modalKeydownHandler) {
+      modal.removeEventListener('keydown', modalKeydownHandler);
+      modalKeydownHandler = null;
+    }
+
+    // 포커스를 모달 밖으로 이동
     if (lastFocusedElement && document.contains(lastFocusedElement)) {
       try { lastFocusedElement.focus(); } catch (_) {}
     } else {
       try { document.body.focus(); } catch (_) {}
     }
-    if (modal) {
-      if (modalKeydownHandler) modal.removeEventListener('keydown', modalKeydownHandler);
-      modalKeydownHandler = null;
-      modal.classList.remove('active');
-      modal.setAttribute('aria-hidden', 'true');
-    }
-    if (appContainer) appContainer.removeAttribute('inert');
+
+    // 포커스 이동 후 aria-hidden 설정 (브라우저가 포커스 처리할 시간 제공)
+    requestAnimationFrame(() => {
+      if (modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      if (appContainer) appContainer.removeAttribute('inert');
+    });
   }
 
   async function downloadHwpx() {
