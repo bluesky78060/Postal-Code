@@ -314,27 +314,41 @@
 
     try {
       const response = await fetch(`${API_BASE}/file/upload`, { method: 'POST', body: formData });
+
+      // 응답 타입 먼저 확인
+      const ct = response.headers.get('content-type') || '';
+      const cd = response.headers.get('content-disposition') || '';
+
+      // Excel 파일 다운로드 응답인 경우
+      if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
+        const blob = await response.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'postal_result.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        progressDiv.classList.add('hidden');
+        showResult(resultDiv, `✅ 처리 파일을 다운로드했습니다.`, 'success');
+        return;
+      }
+
+      // JSON 응답인 경우
       let data;
       try {
         data = await response.json();
-      } catch (e) {
-        const ct = response.headers.get('content-type') || '';
-        const cd = response.headers.get('content-disposition') || '';
-        if (/attachment/i.test(cd) || /application\/(vnd\.openxmlformats|octet-stream|zip)/i.test(ct)) {
-          const blob = await response.blob();
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'postal_result.xlsx';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          progressDiv.classList.add('hidden');
-          showResult(resultDiv, `✅ 처리 파일을 다운로드했습니다.`, 'success');
-          return;
-        } else {
-          throw e;
-        }
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        progressDiv.classList.add('hidden');
+        showResult(resultDiv, `
+          ❌ 서버 응답 형식이 올바르지 않습니다.
+          <div style="margin-top:12px">
+            <button class="btn" data-reset-upload>↩️ 초기화</button>
+          </div>
+        `, 'error');
+        return;
       }
+
       if (data.success) {
         const jobId = data.data.jobId;
         checkProgress(jobId);
@@ -348,9 +362,10 @@
         `, 'error');
       }
     } catch (error) {
+      console.error('Upload error:', error);
       progressDiv.classList.add('hidden');
       showResult(resultDiv, `
-        ❌ 업로드 중 오류가 발생했습니다.
+        ❌ 업로드 중 오류가 발생했습니다: ${error.message}
         <div style="margin-top:12px">
           <button class="btn" data-reset-upload>↩️ 초기화</button>
         </div>
