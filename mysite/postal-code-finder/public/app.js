@@ -335,10 +335,16 @@
         // 처리 완료 즉시 결과 표시
         progressDiv.classList.add('hidden');
 
-        const jobId = data.data.jobId;
         const successful = data.data.successful || 0;
         const failed = data.data.failed || 0;
         const total = data.data.processedRows || 0;
+        const excelData = data.data.excelData;
+
+        // Excel 데이터를 전역 변수에 저장
+        window.currentExcelData = {
+          base64: excelData,
+          filename: `postal_result_성공${successful}_오류${failed}_${Date.now()}.xlsx`
+        };
 
         showResult(resultDiv, `
           <h3>✅ 파일 처리가 완료되었습니다!</h3>
@@ -349,7 +355,7 @@
             <p style="color: #dc3545;">• ✗ 오류: ${failed}개</p>
           </div>
           <div style="margin-top:15px; display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn" data-download-id="${jobId}" style="background: #28a745; color: white;">
+            <button class="btn" data-download-excel style="background: #28a745; color: white;">
               📥 엑셀 다운로드 (성공${successful}_오류${failed})
             </button>
             <button class="btn" data-reset-upload>↩️ 초기화</button>
@@ -423,7 +429,47 @@
   }
 
   function downloadFile(jobId) {
-    window.open(`${API_BASE}/file/download/${jobId}`, '_blank');
+    // jobId 방식은 더 이상 사용하지 않음 (Vercel serverless 환경 문제)
+    // 대신 전역 변수에 저장된 Excel 데이터 사용
+    if (window.currentExcelData && window.currentExcelData.base64) {
+      downloadExcelFromBase64();
+    } else {
+      // 폴백: 기존 방식 시도
+      window.open(`${API_BASE}/file/download/${jobId}`, '_blank');
+    }
+  }
+
+  function downloadExcelFromBase64() {
+    if (!window.currentExcelData || !window.currentExcelData.base64) {
+      alert('다운로드할 파일이 없습니다.');
+      return;
+    }
+
+    try {
+      // Base64를 Blob으로 변환
+      const byteCharacters = atob(window.currentExcelData.base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      // 다운로드
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = window.currentExcelData.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Excel download error:', error);
+      alert('파일 다운로드 중 오류가 발생했습니다.');
+    }
   }
 
   function resetSearchUI() {
@@ -455,6 +501,8 @@
     const resultDiv = document.getElementById('uploadResult');
     resultDiv.classList.add('hidden');
     resultDiv.innerHTML = '';
+    // Clear Excel data
+    window.currentExcelData = null;
   }
 
   function showResult(element, html, type) {
@@ -1149,6 +1197,11 @@
     });
     // Delegate buttons inside result (download/reset)
     document.getElementById('uploadResult').addEventListener('click', (e) => {
+      const dlExcel = e.target.closest('button[data-download-excel]');
+      if (dlExcel) {
+        downloadExcelFromBase64();
+        return;
+      }
       const dl = e.target.closest('button[data-download-id]');
       if (dl) {
         downloadFile(dl.getAttribute('data-download-id'));

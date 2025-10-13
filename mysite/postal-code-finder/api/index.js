@@ -666,27 +666,88 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
       // 임시 파일 삭제
       fs.unlinkSync(req.file.path);
 
-      // 작업 결과를 전역 저장소에 저장 (다운로드용)
-      global.excelJobs[jobId] = jobData;
-
       console.log('Processing completed - Success:', jobData.results.length, 'Errors:', jobData.errors.length);
 
-      // JSON 응답 (다운로드 UI 표시용)
-      return res.json({
-        success: true,
-        data: {
-          jobId: jobId,
-          filename: req.file.originalname,
-          originalRows: rows.length,
-          duplicatesRemoved: duplicatesRemoved,
-          uniqueRows: uniqueRows.length,
-          processedRows: limitedRows.length,
-          successful: jobData.results.length,
-          failed: jobData.errors.length,
-          status: 'completed',
-          message: `처리 완료: ${limitedRows.length}개 처리 (성공 ${jobData.results.length}개, 오류 ${jobData.errors.length}개)`
-        }
-      });
+      // Excel 파일 즉시 생성
+      try {
+        const XLSX = require('xlsx');
+
+        // 시도/시군구 제외한 헤더 생성
+        const newHeaders = headers.filter(h => {
+          const lower = String(h).toLowerCase();
+          return !lower.includes('시도') && !lower.includes('시/도') && !lower.includes('sido') &&
+                 !lower.includes('시군구') && !lower.includes('시/군/구') && !lower.includes('sigungu');
+        });
+        newHeaders.push('도로명주소', '상세주소', '우편번호');
+
+        // 결과 데이터를 엑셀 형식으로 변환
+        const resultData = [newHeaders];
+
+        // 원본 데이터에 우편번호 정보 추가
+        limitedRows.forEach((row, index) => {
+          const result = jobData.results.find(r => r.row === index + 2);
+          const originalRow = Array.isArray(row) ? [...row] : Object.values(row || {});
+
+          // 원본 주소에서 상세주소 추출
+          const originalAddress = originalRow[addressColumnIndex] || '';
+          const { detail } = splitAddressDetail(originalAddress);
+
+          // 시도/시군구를 제외한 원본 데이터 복사
+          const newRow = [];
+          headers.forEach((h, idx) => {
+            const lower = String(h).toLowerCase();
+            const isSidoOrSigungu = lower.includes('시도') || lower.includes('시/도') || lower.includes('sido') ||
+                                    lower.includes('시군구') || lower.includes('시/군/구') || lower.includes('sigungu');
+            if (!isSidoOrSigungu) {
+              newRow.push(originalRow[idx] || '');
+            }
+          });
+
+          // 새 컬럼 추가: 도로명주소, 상세주소, 우편번호
+          newRow.push(result ? (result.fullAddress || '') : '');
+          newRow.push(detail || '');
+          newRow.push(result ? (result.postalCode || '') : '');
+
+          resultData.push(newRow);
+        });
+
+        // 워크북 생성
+        const ws = XLSX.utils.aoa_to_sheet(resultData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Results');
+
+        // 파일을 버퍼로 생성
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        // Base64로 인코딩하여 응답에 포함
+        const base64Excel = buffer.toString('base64');
+
+        console.log('Excel file generated - Success:', jobData.results.length, 'Errors:', jobData.errors.length);
+
+        // JSON 응답에 Excel 데이터 포함
+        return res.json({
+          success: true,
+          data: {
+            jobId: jobId,
+            filename: req.file.originalname,
+            originalRows: rows.length,
+            duplicatesRemoved: duplicatesRemoved,
+            uniqueRows: uniqueRows.length,
+            processedRows: limitedRows.length,
+            successful: jobData.results.length,
+            failed: jobData.errors.length,
+            status: 'completed',
+            excelData: base64Excel,
+            message: `처리 완료: ${limitedRows.length}개 처리 (성공 ${jobData.results.length}개, 오류 ${jobData.errors.length}개)`
+          }
+        });
+      } catch (excelError) {
+        console.error('Excel generation error:', excelError);
+        return res.status(500).json({
+          success: false,
+          error: '엑셀 파일 생성 중 오류가 발생했습니다: ' + excelError.message
+        });
+      }
 
     } catch (excelError) {
       console.error('Excel processing error:', excelError);
