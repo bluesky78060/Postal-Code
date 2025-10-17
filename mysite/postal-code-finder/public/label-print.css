@@ -49,8 +49,7 @@
     height: 297mm;
     padding-top: 14mm;
     padding-left: 5mm;
-    padding-right: 5mm;
-    padding-bottom: 14mm;
+    padding-bottom: 12mm;
     margin: 0;
     display: grid;
     grid-template-columns: repeat(2, 100mm);
@@ -132,8 +131,7 @@
     height: 297mm;
     padding-top: 14mm;
     padding-left: 5mm;
-    padding-right: 5mm;
-    padding-bottom: 14mm;
+    padding-bottom: 12mm;
     margin: 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -155,8 +153,7 @@
     height: 297mm;
     padding-top: 14mm;
     padding-left: 5mm;
-    padding-right: 5mm;
-    padding-bottom: 14mm;
+    padding-bottom: 12mm;
     margin: 0;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
