@@ -65,7 +65,7 @@
 .label-item {
     width: 100mm;
     height: 30mm;
-    border: 0.5px solid #e0e0e0;
+    border: none;
     padding: 3mm;
     /* 셀 안 좌우 여백: 기존 + 3px 추가 */
     padding-left: calc(3pt + 3px);
@@ -181,9 +181,8 @@
 
 /* 빈 라벨 스타일 */
 .label-item.empty {
-    border-style: dashed;
-    border-color: #bdc3c7;
-    background: #fafafa;
+    border: none;
+    background: transparent;
 }
 
 /* 프린트 시 페이지 설정 */
@@ -198,7 +197,7 @@
     }
 
     .label-item {
-        border-color: #333 !important;
+        border: none !important;
         -webkit-print-color-adjust: exact;
     }
 }
