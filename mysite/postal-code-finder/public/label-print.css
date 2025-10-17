@@ -93,6 +93,7 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     text-align: left;
+    padding-right: 3mm;
 }
 
 .label-name-line {
