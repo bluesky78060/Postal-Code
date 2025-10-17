@@ -47,14 +47,14 @@
 .label-sheet-2x9 {
     width: 210mm;
     height: 297mm;
-    padding-top: 10mm;
+    padding-top: 15mm;
     padding-left: 5mm;
     padding-bottom: 12mm;
     margin: 0;
     display: grid;
     grid-template-columns: repeat(2, 100mm);
     grid-template-rows: repeat(9, 30mm);
-    gap: 0;
+    column-gap: 3mm;
     background: white;
     page-break-after: always;
     justify-content: center;
@@ -66,7 +66,7 @@
     height: 30mm;
     border: none;
     padding: 0;
-    padding-right: 4mm;
+    padding-right: 2mm;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -126,14 +126,14 @@
 .label-sheet-3x7 {
     width: 210mm;
     height: 297mm;
-    padding-top: 10mm;
+    padding-top: 15mm;
     padding-left: 5mm;
     padding-bottom: 12mm;
     margin: 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(7, 1fr);
-    gap: 0;
+    column-gap: 3mm;
     background: white;
     page-break-after: always;
 }
@@ -147,14 +147,14 @@
 .label-sheet-4x6 {
     width: 210mm;
     height: 297mm;
-    padding-top: 10mm;
+    padding-top: 15mm;
     padding-left: 5mm;
     padding-bottom: 12mm;
     margin: 0;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     grid-template-rows: repeat(6, 1fr);
-    gap: 0;
+    column-gap: 3mm;
     background: white;
     page-break-after: always;
 }
