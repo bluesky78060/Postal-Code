@@ -654,10 +654,6 @@
             margin-top: 20px;
         }
 
-        #nameSuffix {
-            width: 100% !important;
-        }
-
         .button-row {
             display: flex;
             flex-wrap: wrap;
@@ -985,14 +981,7 @@
                             <div class="form-group">
                                 <label>라벨 필드 설정</label>
                                 <div id="labelFieldMapping"></div>
-                                <div class="field-mapping suffix-row">
-                                    <label for="nameSuffix">성명 뒤 호칭</label>
-                                    <select id="nameSuffix">
-                                        <option value="">없음</option>
-                                        <option value="님" selected>님</option>
-                                        <option value="귀하">귀하</option>
-                                    </select>
-                                </div>
+                                <input type="hidden" id="nameSuffix" value="님 귀하">
                             </div>
 
                             <div class="button-row">
