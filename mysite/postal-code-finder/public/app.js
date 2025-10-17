@@ -946,18 +946,19 @@
           }
 
           // 길이 기준은 테이블 배치에서도 유지하되 여유 있게 조정
-          const addressLines = [];
-          if (address) addressLines.push(address);
-          if (detail) addressLines.push(detail);
+          const addressParts = [];
+          if (address) addressParts.push(address);
+          if (detail) addressParts.push(detail);
+          const combinedAddress = addressParts.join(' ');
+
           const displayNameParts = [];
           if (name) displayNameParts.push(name);
           if (nameSuffix) displayNameParts.push(nameSuffix);
           const displayName = displayNameParts.join(' ');
-          const combinedAddress = addressLines.join(' ');
           const isLong = combinedAddress.length > 36 || displayName.length > 20 || `${postalCode}`.length > 8;
 
-          const addressBlock = addressLines.length
-            ? addressLines.map(line => `<div class="label-address-line">${line}</div>`).join('')
+          const addressBlock = combinedAddress
+            ? `<div class="label-address-line">${combinedAddress}</div>`
             : '<div class="label-address-line"></div>';
 
           sheetHtml += `
