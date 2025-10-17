@@ -65,8 +65,7 @@
     width: 100mm;
     height: 30mm;
     border: none;
-    padding: 0;
-    padding-right: 2mm;
+    padding: 0 2mm 0 0;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
