@@ -102,6 +102,7 @@
     letter-spacing: 0.5px;
     text-align: right;
     margin-bottom: 0.6mm;
+    padding-right: 2mm;
 }
 
 .label-postal-line {
@@ -110,6 +111,7 @@
     letter-spacing: 1.4px;
     text-align: right;
     margin-top: auto;
+    padding-right: 2mm;
 }
 
 /* 화면 미리보기용 스타일 */
