@@ -65,10 +65,7 @@
     width: 100mm;
     height: 30mm;
     border: none;
-    padding: 3mm;
-    /* 셀 안 좌우 여백: 기존 + 3px 추가 */
-    padding-left: calc(3pt + 3px);
-    padding-right: calc(3pt + 3px);
+    padding: 0;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
