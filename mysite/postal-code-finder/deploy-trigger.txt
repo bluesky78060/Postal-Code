@@ -1,4 +1,0 @@
-Deploy trigger at 19:50:23
-Force rebuild with JavaScript content-type fix
-Root Directory: mysite/postal-code-finder
-Latest commit: 0fc74a8
