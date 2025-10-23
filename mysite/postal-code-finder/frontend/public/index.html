@@ -54,6 +54,37 @@
             flex-direction: column;
             align-items: center;
             gap: 16px;
+            position: relative;
+        }
+
+        .help-link {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 12px;
+            color: white;
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            backdrop-filter: blur(6px);
+            transition: all 0.2s ease;
+        }
+
+        .help-link:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .help-link::before {
+            content: "📖";
+            font-size: 1.2em;
         }
 
         .header-top {
@@ -840,6 +871,7 @@
 <body>
     <div class="container">
         <div class="header">
+            <a href="docs/user-guide.html" class="help-link" target="_blank">사용 설명서</a>
             <div class="header-top">
                 <div class="hero-icon">📮</div>
                 <h1>우편번호 자동 입력</h1>
