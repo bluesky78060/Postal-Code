@@ -658,9 +658,9 @@ app.post('/api/file/upload', upload.single('file'), async (req, res) => {
         createdAt: new Date()
       };
 
-      // 병렬 처리 함수 (동시성 5개)
+      // 병렬 처리 함수 (동시성 10개로 증가)
       const addressDetailCache = new Map(); // splitAddressDetail 결과 캐싱
-      const concurrency = 5;
+      const concurrency = 10; // 5 → 10으로 성능 향상
       const batchDelay = 100; // 배치 간 100ms 지연
 
       // 배치 생성
@@ -887,55 +887,93 @@ app.get('/api/file/status/:jobId', async (req, res) => {
       job.results = [];
       job.errors = [];
 
-      // 백그라운드에서 주소 처리 (실제로는 동기 처리)
+      // 병렬 배치 처리로 성능 개선
       try {
-        for (let i = 0; i < job.rows.length; i++) {
-          const row = job.rows[i];
-          const address = row[job.addressColumnIndex];
-          
-          if (!address || typeof address !== 'string') {
-            job.errors.push({ row: i + 2, error: '주소가 없습니다' });
-            continue;
-          }
+        const BATCH_SIZE = 10; // 동시에 처리할 주소 수
 
-        try {
-          // 1) 상세 제거한 메인 주소로 직접 검색
-          const { main } = splitAddressDetail(address);
-          const results = await jusoSearch(main || address, 50);
-          const common = results?.common;
-          
-          if (common?.errorCode === '0' && Array.isArray(results?.juso)) {
-            // 2) 후보에서 입력과 엄격 일치 검증 통과하는 첫 건만 채택
-            const cand = results.juso.find(it => verifyJusoCandidate(address, it));
-            if (cand) {
-              const juso = cand;
-              job.results.push({
-                row: i + 2,
-                originalAddress: address,
-                postalCode: juso.zipNo || '',
-                fullAddress: juso.roadAddr || juso.jibunAddr || '',
-                sido: juso.siNm || '',
-                sigungu: juso.sggNm || ''
-              });
-            } else {
-              job.errors.push({ row: i + 2, address, error: '우편번호를 찾을 수 없습니다' });
+        // 배치 단위로 처리
+        for (let batchStart = 0; batchStart < job.rows.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, job.rows.length);
+          const batchRows = job.rows.slice(batchStart, batchEnd);
+
+          // 배치 내 모든 주소를 병렬 처리
+          const batchPromises = batchRows.map(async (row, batchIndex) => {
+            const globalIndex = batchStart + batchIndex;
+            const rowNumber = globalIndex + 2; // Excel row number (header 고려)
+            const address = row[job.addressColumnIndex];
+
+            // 주소 검증
+            if (!address || typeof address !== 'string') {
+              return {
+                type: 'error',
+                data: { row: rowNumber, error: '주소가 없습니다' }
+              };
             }
-          } else {
-            job.errors.push({ row: i + 2, address, error: '우편번호를 찾을 수 없습니다' });
-          }
-        } catch (apiError) {
-          job.errors.push({ 
-            row: i + 2, 
-            address: address,
-            error: 'API 호출 실패: ' + apiError.message 
-          });
-        }
 
-          job.processed = i + 1;
-          
-          // API 호출 제한을 위한 지연 (더 짧게)
-          if (i < job.rows.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 50)); // 100ms에서 50ms로 단축
+            try {
+              // 1) 상세 제거한 메인 주소로 직접 검색
+              const { main } = splitAddressDetail(address);
+              const results = await jusoSearch(main || address, 50);
+              const common = results?.common;
+
+              if (common?.errorCode === '0' && Array.isArray(results?.juso)) {
+                // 2) 후보에서 입력과 엄격 일치 검증 통과하는 첫 건만 채택
+                const cand = results.juso.find(it => verifyJusoCandidate(address, it));
+                if (cand) {
+                  const juso = cand;
+                  return {
+                    type: 'success',
+                    data: {
+                      row: rowNumber,
+                      originalAddress: address,
+                      postalCode: juso.zipNo || '',
+                      fullAddress: juso.roadAddr || juso.jibunAddr || '',
+                      sido: juso.siNm || '',
+                      sigungu: juso.sggNm || ''
+                    }
+                  };
+                } else {
+                  return {
+                    type: 'error',
+                    data: { row: rowNumber, address, error: '우편번호를 찾을 수 없습니다' }
+                  };
+                }
+              } else {
+                return {
+                  type: 'error',
+                  data: { row: rowNumber, address, error: '우편번호를 찾을 수 없습니다' }
+                };
+              }
+            } catch (apiError) {
+              return {
+                type: 'error',
+                data: {
+                  row: rowNumber,
+                  address: address,
+                  error: 'API 호출 실패: ' + apiError.message
+                }
+              };
+            }
+          });
+
+          // 배치 내 모든 요청을 동시 실행
+          const batchResults = await Promise.all(batchPromises);
+
+          // 결과 분류 및 저장
+          batchResults.forEach(result => {
+            if (result.type === 'success') {
+              job.results.push(result.data);
+            } else {
+              job.errors.push(result.data);
+            }
+          });
+
+          // 진행률 업데이트
+          job.processed = batchEnd;
+
+          // 배치 간 짧은 대기 (Rate Limit 보호)
+          if (batchEnd < job.rows.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
 
