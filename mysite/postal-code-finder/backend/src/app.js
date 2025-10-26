@@ -118,11 +118,14 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     provider: cfg?.postal?.provider || 'unknown',
-    keys: {
-      juso: Boolean(cfg?.jusoApiKey),
-      kakao: Boolean(cfg?.kakaoApiKey),
-      vworld: Boolean(cfg?.vworldApiKey)
-    }
+    // API 키 정보는 개발 환경에서만 노출
+    ...(process.env.NODE_ENV === 'development' && {
+      keys: {
+        juso: Boolean(cfg?.jusoApiKey),
+        kakao: Boolean(cfg?.kakaoApiKey),
+        vworld: Boolean(cfg?.vworldApiKey)
+      }
+    })
   });
 });
 

@@ -48,10 +48,13 @@ function rawHealth(res) {
   res.status(200).end(JSON.stringify({
     status: 'OK',
     timestamp: new Date().toISOString(),
-    env: {
-      JUSO_API_KEY: !!process.env.JUSO_API_KEY,
-      NODE_ENV: process.env.NODE_ENV || null,
-    }
+    // API 키 정보는 개발 환경에서만 노출
+    ...(process.env.NODE_ENV === 'development' && {
+      env: {
+        JUSO_API_KEY: !!process.env.JUSO_API_KEY,
+        NODE_ENV: process.env.NODE_ENV,
+      }
+    })
   }));
 }
 app.get('/api/health', (req, res) => rawHealth(res));
@@ -135,24 +138,34 @@ if (rateLimit) {
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// 간단한 테스트 라우트
+// 간단한 테스트 라우트 (개발 환경에서만 활성화)
 app.get('/api/test', (req, res) => {
+  // 프로덕션에서는 접근 차단
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
   res.json({
     message: 'API is working!',
     timestamp: new Date().toISOString(),
     env: {
       NODE_ENV: process.env.NODE_ENV,
-      JUSO_API_KEY: process.env.JUSO_API_KEY ? 'Set' : 'Not set',
+      JUSO_API_KEY: !!process.env.JUSO_API_KEY, // Set/Not set 대신 boolean
       POSTAL_PROVIDER: process.env.POSTAL_PROVIDER
     }
   });
 });
 
-// JUSO API 키 테스트
+// JUSO API 키 테스트 (개발 환경에서만 활성화)
 app.get('/api/test-juso', async (req, res) => {
+  // 프로덕션에서는 접근 차단
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
   try {
     const axios = require('axios');
-    
+
     const response = await axios.get('https://business.juso.go.kr/addrlink/addrLinkApi.do', {
       params: {
         confmKey: process.env.JUSO_API_KEY,
@@ -166,7 +179,7 @@ app.get('/api/test-juso', async (req, res) => {
 
     res.json({
       message: 'JUSO API 테스트',
-      apiKey: process.env.JUSO_API_KEY ? '설정됨' : '미설정',
+      hasApiKey: !!process.env.JUSO_API_KEY,
       response: response.data
     });
 
@@ -174,7 +187,7 @@ app.get('/api/test-juso', async (req, res) => {
     res.status(500).json({
       message: 'JUSO API 테스트 실패',
       error: error.message,
-      apiKey: process.env.JUSO_API_KEY ? '설정됨' : '미설정'
+      hasApiKey: !!process.env.JUSO_API_KEY
     });
   }
 });
@@ -212,9 +225,15 @@ app.post('/api/address/search', async (req, res) => {
       timeout: 10000
     });
 
-    // 디버깅을 위한 로그
-    console.log('JUSO API Full Response:', JSON.stringify(response.data, null, 2));
-    
+    // 개발 환경에서만 상세 로그 출력
+    if (process.env.NODE_ENV === 'development') {
+      console.log('JUSO API Response:', {
+        keyword: address,
+        resultCount: response.data?.results?.juso?.length || 0,
+        errorCode: response.data?.results?.common?.errorCode
+      });
+    }
+
     const results = response.data?.results;
     
     if (!results) {
@@ -245,8 +264,6 @@ app.post('/api/address/search', async (req, res) => {
       sido: juso.siNm || '',
       sigungu: juso.sggNm || ''
     };
-    
-    console.log('Parsed result:', result);
 
     res.json({
       success: true,
