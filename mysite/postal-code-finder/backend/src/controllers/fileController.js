@@ -77,7 +77,7 @@ const JOB_CLEANUP_INTERVAL = Number(config?.jobs?.cleanupInterval) || 60 * 60 * 
 const JOB_RETENTION_TIME = Number(config?.jobs?.retentionTime) || 24 * 60 * 60 * 1000;
 
 // 주기적으로 완료된 작업 정리
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [jobId, job] of processingJobs.entries()) {
     if (job.status === 'completed' || job.status === 'error') {
@@ -650,4 +650,9 @@ class FileController {
   }
 }
 
-module.exports = new FileController();
+const controller = new FileController();
+
+// Export controller as default, with processingJobs and cleanupInterval for testing
+module.exports = controller;
+module.exports.processingJobs = processingJobs;
+module.exports.cleanupInterval = cleanupInterval;
