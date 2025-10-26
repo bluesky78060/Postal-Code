@@ -19,14 +19,25 @@ app.use(cors({
 }));
 ```
 
-### After (안전)
+### After (안전 + 자동 허용)
 ```javascript
 app.use(cors({
   origin: function (origin, callback) {
-    // 환경 변수로 관리되는 허용 목록만 접근 가능
-    if (!origin || allowedOrigins.includes(origin)) {
+    // 출처가 없는 경우 허용
+    if (!origin) return callback(null, true);
+
+    // Vercel 배포: ALLOWED_ORIGINS가 비어있으면 Vercel 도메인 자동 허용
+    if (allowedOrigins.length === 0) {
+      if (origin.includes('.vercel.app')) {
+        return callback(null, true);
+      }
+    }
+
+    // 환경 변수로 관리되는 허용 목록 확인
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -36,9 +47,13 @@ app.use(cors({
 
 ---
 
-## 📋 배포 전 설정 필요
+## 📋 배포 설정 (선택사항)
 
-### 1. Vercel 환경 변수 설정
+### 1. Vercel 환경 변수 설정 (선택사항)
+
+**개선사항**: Vercel 도메인(.vercel.app)은 이제 자동으로 허용됩니다!
+
+추가 도메인을 허용하려는 경우에만 설정하세요:
 
 Vercel Dashboard → 프로젝트 → Settings → Environment Variables
 
@@ -46,9 +61,14 @@ Vercel Dashboard → 프로젝트 → Settings → Environment Variables
 # 변수명
 ALLOWED_ORIGINS
 
-# 값 (실제 도메인으로 변경)
-https://your-postal-app.vercel.app,https://www.yourdomain.com
+# 값 (커스텀 도메인 추가 시)
+https://www.yourdomain.com,https://api.yourdomain.com
 ```
+
+**참고**: ALLOWED_ORIGINS를 설정하지 않으면:
+- ✅ Vercel 도메인 (.vercel.app) 자동 허용
+- ✅ 개발 환경: localhost 자동 허용
+- ❌ 기타 도메인: 차단
 
 ### 2. 로컬 개발 환경 설정
 

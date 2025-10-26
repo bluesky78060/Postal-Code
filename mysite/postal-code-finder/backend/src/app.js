@@ -40,6 +40,7 @@ app.use(compression());
 // CORS 설정 - 보안 강화
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
+  .map(o => o.trim())
   .filter(Boolean);
 
 // 기본 허용 출처 추가
@@ -58,6 +59,13 @@ app.use(cors({
     // 개발 환경: localhost 패턴 허용
     if (process.env.NODE_ENV === 'development' && localhostRegex.test(origin)) {
       return callback(null, true);
+    }
+
+    // Vercel 배포: ALLOWED_ORIGINS가 비어있으면 Vercel 도메인 자동 허용
+    if (allowedOrigins.length === 0 || (allowedOrigins.length === 1 && allowedOrigins[0] === config.frontendUrl)) {
+      if (origin.includes('.vercel.app')) {
+        return callback(null, true);
+      }
     }
 
     // 허용 목록 확인

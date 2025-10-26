@@ -87,10 +87,11 @@ if (compression) {
 // CORS 설정 - 보안 강화
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
+  .map(o => o.trim())
   .filter(Boolean);
 
 // 개발 환경에서는 localhost 허용
-if (process.env.NODE_ENV === 'development' || !process.env.ALLOWED_ORIGINS) {
+if (process.env.NODE_ENV === 'development') {
   allowedOrigins.push(
     'http://localhost:3001',
     'http://127.0.0.1:3001',
@@ -103,6 +104,14 @@ app.use(cors({
   origin: function (origin, callback) {
     // 출처가 없는 경우 (same-origin, 모바일 앱, Postman 등)
     if (!origin) return callback(null, true);
+
+    // Vercel 배포: ALLOWED_ORIGINS가 비어있으면 같은 도메인 자동 허용
+    if (allowedOrigins.length === 0) {
+      // Vercel 배포 도메인 패턴 허용 (vercel.app)
+      if (origin.includes('.vercel.app')) {
+        return callback(null, true);
+      }
+    }
 
     // 허용 목록 확인
     if (allowedOrigins.includes(origin)) {
