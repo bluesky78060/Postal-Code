@@ -37,20 +37,34 @@ app.use(helmet({
 }));
 app.use(compression());
 
-// CORS 설정 (동적 포트 허용)
+// CORS 설정 - 보안 강화
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .filter(Boolean);
+
+// 기본 허용 출처 추가
+if (config.frontendUrl) {
+  allowedOrigins.push(config.frontendUrl);
+}
+
+// 개발 환경에서는 localhost 패턴 허용
+const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 app.use(cors({
   origin: (origin, callback) => {
-    // localhost와 127.0.0.1의 모든 포트 허용
-    const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-    
-    const allowed = [
-      config.frontendUrl,
-      'null' // 파일 스킴(file://)에서의 요청 허용
-    ];
-    
-    if (!origin || allowed.includes(origin) || localhostRegex.test(origin)) {
+    // 출처가 없는 경우 (same-origin, 모바일 앱, Postman 등)
+    if (!origin) return callback(null, true);
+
+    // 개발 환경: localhost 패턴 허용
+    if (process.env.NODE_ENV === 'development' && localhostRegex.test(origin)) {
+      return callback(null, true);
+    }
+
+    // 허용 목록 확인
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked: ${origin}`);
       callback(null, false);
     }
   },
