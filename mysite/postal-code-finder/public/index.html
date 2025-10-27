@@ -1086,10 +1086,10 @@
                         <div class="form-grid">
                             <div class="form-group full">
                                 <label for="address">주소 입력</label>
-                                <input type="text" id="address" placeholder="예: 서울특별시 강남구 테헤란로 123">
+                                <input type="text" id="address" placeholder="예: 서울특별시 강남구 테헤란로 123" autocomplete="street-address" name="address" aria-label="주소 입력">
                             </div>
                             <div class="action-row">
-                                <button class="btn btn-wide" id="btnSearch">🔍 우편번호 찾기</button>
+                                <button class="btn btn-wide" id="btnSearch" aria-label="입력한 주소로 우편번호 찾기">🔍 우편번호 찾기</button>
                             </div>
                         </div>
                         <div id="searchResult" class="result hidden"></div>
@@ -1112,7 +1112,7 @@
                             <p class="upload-title">엑셀 파일을 선택하거나 여기에 드래그하세요</p>
                             <p class="upload-sub">지원 형식: .xls, .xlsx (최대 10MB / 최대 300행)</p>
                             <span class="upload-cta">파일 선택</span>
-                            <input type="file" id="file" accept=".xls,.xlsx" hidden>
+                            <input type="file" id="file" accept=".xls,.xlsx" hidden name="excelFile" aria-label="엑셀 파일 선택">
                         </div>
 
                         <div id="uploadProgress" class="hidden progress-card">
@@ -1145,10 +1145,10 @@
                             <p class="upload-title">주소가 포함된 엑셀 파일을 선택하거나 드래그하세요</p>
                             <p class="upload-sub">A4 라벨지 (2열 9행, 18개) 기준 · 최대 300행 지원</p>
                             <span class="upload-cta">파일 선택</span>
-                            <input type="file" id="labelFile" accept=".xls,.xlsx" hidden>
+                            <input type="file" id="labelFile" accept=".xls,.xlsx" hidden name="labelFile" aria-label="라벨용 엑셀 파일 선택">
                         </div>
                         <div class="center-row">
-                            <button class="btn btn-outline" id="btnLoadSampleData">📊 샘플 데이터로 테스트</button>
+                            <button class="btn btn-outline" id="btnLoadSampleData" aria-label="샘플 데이터로 라벨 출력 테스트하기">📊 샘플 데이터로 테스트</button>
                         </div>
 
                         <div id="labelUploadProgress" class="hidden progress-card">
@@ -1171,7 +1171,7 @@
 
                             <div class="form-group">
                                 <label for="labelTemplate">라벨 템플릿 선택</label>
-                                <select id="labelTemplate">
+                                <select id="labelTemplate" name="labelTemplate" autocomplete="off" aria-label="라벨 템플릿 선택">
                                     <option value="2x9">A4 - 2열 9행 (18개, 100×30mm)</option>
                                     <option value="3x7">A4 - 3열 7행 (21개)</option>
                                     <option value="4x6">A4 - 4열 6행 (24개)</option>
@@ -1185,15 +1185,15 @@
                             </div>
 
                             <div class="button-row">
-                                <button class="btn btn-pink" id="btnGenerateLabels">🏷️ 라벨 생성</button>
-                                <button class="btn btn-outline" id="btnLabelReset">↩️ 초기화</button>
+                                <button class="btn btn-pink" id="btnGenerateLabels" aria-label="설정한 템플릿으로 라벨 생성하기">🏷️ 라벨 생성</button>
+                                <button class="btn btn-outline" id="btnLabelReset" aria-label="라벨 설정 초기화하기">↩️ 초기화</button>
                             </div>
                         </div>
 
                         <div id="labelPreview" class="hidden preview-card">
                             <h3>🖨️ 라벨 미리보기</h3>
                             <div class="preview-actions">
-                                <button class="btn btn-pink" id="btnPrintLabels">🖨️ 인쇄하기</button>
+                                <button class="btn btn-pink" id="btnPrintLabels" aria-label="생성된 라벨 인쇄하기">🖨️ 인쇄하기</button>
                             </div>
                             <div id="labelSheet" class="label-sheet" style="display:none"></div>
                         </div>
