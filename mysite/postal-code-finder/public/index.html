@@ -141,22 +141,25 @@
         /* 광고 카드 스타일 */
         .ad-card {
             background: transparent;
-            border-radius: var(--radius-md);
+            border-radius: 0;
             box-shadow: none;
-            overflow: hidden;
-            min-height: 90px;
+            overflow: visible;
+            min-height: auto;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 8px 0 8px 0;
+            margin: 8px 0;
+            padding: 0;
         }
 
         .ad-container {
             width: 100%;
+            max-width: 728px;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 0;
+            margin: 0 auto;
         }
 
         /* Kakao Adfit 광고 스타일 */
@@ -844,11 +847,13 @@
 
             /* 광고: 320x50 모바일 광고만 표시 */
             .ad-card {
-                min-height: 55px;
-                margin: 6px 0 6px 0;
+                min-height: auto;
+                margin: 6px 0;
+                padding: 0;
             }
 
             .ad-container {
+                max-width: 320px;
                 padding: 0;
             }
 
