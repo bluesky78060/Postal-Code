@@ -40,7 +40,7 @@ const config = {
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
     allowedExtensions: ['.xls', '.xlsx'],
-    maxRows: Math.max(parseInt(process.env.MAX_ROWS || '0', 10) || 0, 300)
+    maxRows: Math.max(parseInt(process.env.MAX_ROWS || '0', 10) || 0, 500)
   },
   
   // 출력/변환 옵션
