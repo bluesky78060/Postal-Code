@@ -792,39 +792,96 @@
 
         @media (max-width: 840px) {
             .container {
-                padding: 0 20px;
+                padding: 0 16px;
             }
 
-            .card,
-            .section-card {
+            /* 헤더 모바일 최적화 */
+            .header {
+                padding: 48px 0 28px;
+                gap: 12px;
+            }
+
+            .hero-icon {
+                width: 64px;
+                height: 64px;
+                font-size: 32px;
                 border-radius: 20px;
             }
 
-            .section-body {
-                padding: 24px;
+            .header h1 {
+                font-size: clamp(1.8rem, 6vw, 2.4rem);
+                line-height: 1.2;
             }
 
-            /* 모바일: 320x50 광고만 표시 */
+            .header p {
+                font-size: 0.9rem;
+                line-height: 1.5;
+                padding: 0 8px;
+            }
+
+            .help-link {
+                top: 12px;
+                right: 12px;
+                padding: 8px 14px;
+                font-size: 0.85rem;
+                gap: 6px;
+            }
+
+            .help-link::before {
+                font-size: 1.1em;
+            }
+
+            /* 카드 모바일 최적화 */
+            .card,
+            .section-card {
+                border-radius: 18px;
+            }
+
+            .section-body {
+                padding: 20px;
+            }
+
+            /* 광고: 320x50 모바일 광고만 표시 */
             .ad-card {
-                min-height: 70px; /* 모바일 광고 높이에 맞춤 */
+                min-height: 70px;
             }
 
             .kakao_ad_desktop {
-                display: none !important; /* 데스크톱 광고 숨김 */
+                display: none !important;
             }
 
             .kakao_ad_mobile {
-                display: block !important; /* 모바일 광고 표시 */
+                display: block !important;
+            }
+
+            /* 탭 모바일 최적화 */
+            .tabs {
+                gap: 8px;
+                padding: 10px;
+                grid-template-columns: 1fr;
             }
 
             .tab {
-                font-size: 0.98rem;
-                padding: 12px 14px;
+                font-size: 1rem;
+                padding: 16px 20px;
+                gap: 12px;
+                min-height: 56px;
             }
 
+            .tab .tab-icon {
+                font-size: 1.4rem;
+            }
+
+            .tab span:not(.tab-icon) {
+                font-size: 1rem;
+            }
+
+            /* 섹션 헤더 모바일 최적화 */
             .section-header {
                 flex-direction: column;
                 align-items: flex-start;
+                gap: 10px;
+                padding: 18px 20px;
             }
 
             .section-icon {
@@ -833,8 +890,83 @@
                 font-size: 1.4rem;
             }
 
+            .section-header h3 {
+                font-size: 1.1rem;
+            }
+
+            .section-header p {
+                font-size: 0.85rem;
+                line-height: 1.5;
+            }
+
+            /* 버튼 모바일 최적화 - 터치 친화적 크기 */
+            button {
+                min-height: 48px !important;
+                padding: 14px 20px !important;
+                font-size: 0.95rem !important;
+            }
+
+            .btn {
+                min-height: 48px !important;
+                padding: 14px 20px !important;
+                font-size: 0.95rem !important;
+            }
+
+            /* 폼 입력 모바일 최적화 */
+            input[type="text"],
+            input[type="number"],
+            select,
+            textarea {
+                min-height: 48px !important;
+                padding: 12px 16px !important;
+                font-size: 1rem !important;
+            }
+
+            textarea {
+                min-height: 120px !important;
+            }
+
+            /* 필드 매핑 그리드 모바일 최적화 */
             #labelFieldMapping {
                 grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .field-row {
+                gap: 10px;
+            }
+
+            .field-row label {
+                font-size: 0.9rem;
+            }
+
+            /* 라벨 프리뷰 모바일 최적화 */
+            #labelPreview {
+                padding: 16px;
+            }
+
+            /* 결과 영역 모바일 최적화 */
+            .result-item {
+                padding: 14px;
+                gap: 10px;
+            }
+
+            .result-item strong {
+                font-size: 0.9rem;
+            }
+
+            /* 상태 표시 모바일 최적화 */
+            .api-status-footer {
+                padding: 10px 14px;
+                font-size: 0.85rem;
+                bottom: 12px;
+                right: 12px;
+                border-radius: 10px;
+            }
+
+            .api-dot {
+                width: 7px;
+                height: 7px;
             }
 
             .field-mapping.suffix-row {
