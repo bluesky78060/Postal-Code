@@ -144,18 +144,23 @@
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow-soft);
             overflow: hidden;
-            min-height: 100px;
+            min-height: 110px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .ad-container {
             width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
         }
 
-        .ad-placeholder {
-            background: linear-gradient(135deg, rgba(79, 70, 229, 0.05) 0%, rgba(124, 58, 237, 0.05) 100%);
-            border: 2px dashed rgba(79, 70, 229, 0.2);
-            border-radius: var(--radius-md);
-            margin: 10px;
+        /* Kakao Adfit 광고 스타일 */
+        .kakao_ad_area {
+            display: block !important;
         }
 
         /* API 연결 상태 - 하단 고정 */
@@ -790,14 +795,9 @@
                 padding: 24px;
             }
 
-            .api-row {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .api-actions {
-                width: 100%;
-                justify-content: flex-end;
+            /* 모바일에서 광고 숨김 처리 (728px 광고는 모바일에 너무 큼) */
+            .ad-card {
+                display: none;
             }
 
             .tab {
@@ -876,13 +876,12 @@
             <!-- 광고 영역 -->
             <section class="card ad-card">
                 <div class="ad-container">
-                    <!-- Google AdSense 또는 광고 코드를 여기에 추가하세요 -->
-                    <div class="ad-placeholder">
-                        <p style="color: #9ca3af; text-align: center; padding: 20px;">
-                            📢 광고 영역<br>
-                            <small>Google AdSense 코드를 여기에 삽입하세요</small>
-                        </p>
-                    </div>
+                    <!-- Kakao Adfit 광고 -->
+                    <ins class="kakao_ad_area" style="display:none;"
+                         data-ad-unit="DAN-vWW6D5W9ozQdqjJU"
+                         data-ad-width="728"
+                         data-ad-height="90"></ins>
+                    <script type="text/javascript" src="//t1.daumcdn.net/kas/static/ba.min.js" async></script>
                 </div>
             </section>
 
