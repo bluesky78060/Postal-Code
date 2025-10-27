@@ -140,15 +140,15 @@
 
         /* 광고 카드 스타일 */
         .ad-card {
-            background: var(--surface);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-soft);
+            background: transparent;
+            border-radius: var(--radius-md);
+            box-shadow: none;
             overflow: hidden;
-            min-height: 100px;
+            min-height: 90px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .ad-container {
@@ -156,7 +156,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 5px;
+            padding: 0;
         }
 
         /* Kakao Adfit 광고 스타일 */
@@ -844,12 +844,12 @@
 
             /* 광고: 320x50 모바일 광고만 표시 */
             .ad-card {
-                min-height: 60px;
-                margin-bottom: 16px;
+                min-height: 55px;
+                margin-bottom: 12px;
             }
 
             .ad-container {
-                padding: 5px 0;
+                padding: 0;
             }
 
             .kakao_ad_desktop {
@@ -1045,26 +1045,26 @@
                 </div>
             </div>
 
-            <!-- 광고 영역 -->
-            <section class="card ad-card">
-                <div class="ad-container">
-                    <!-- Kakao Adfit 광고 - 데스크톱 (728x90) -->
-                    <ins class="kakao_ad_area kakao_ad_desktop" style="display:none;"
-                         data-ad-unit="DAN-vWW6D5W9ozQdqjJU"
-                         data-ad-width="728"
-                         data-ad-height="90"></ins>
-
-                    <!-- Kakao Adfit 광고 - 모바일 (320x50) -->
-                    <ins class="kakao_ad_area kakao_ad_mobile" style="display:none;"
-                         data-ad-unit="DAN-3dVRSJ6wWh0tgvhk"
-                         data-ad-width="320"
-                         data-ad-height="50"></ins>
-
-                    <script type="text/javascript" src="//t1.daumcdn.net/kas/static/ba.min.js" async></script>
-                </div>
-            </section>
-
             <div id="search" class="tab-content active">
+                <!-- 광고 영역 -->
+                <section class="card ad-card">
+                    <div class="ad-container">
+                        <!-- Kakao Adfit 광고 - 데스크톱 (728x90) -->
+                        <ins class="kakao_ad_area kakao_ad_desktop" style="display:none;"
+                             data-ad-unit="DAN-vWW6D5W9ozQdqjJU"
+                             data-ad-width="728"
+                             data-ad-height="90"></ins>
+
+                        <!-- Kakao Adfit 광고 - 모바일 (320x50) -->
+                        <ins class="kakao_ad_area kakao_ad_mobile" style="display:none;"
+                             data-ad-unit="DAN-3dVRSJ6wWh0tgvhk"
+                             data-ad-width="320"
+                             data-ad-height="50"></ins>
+
+                        <script type="text/javascript" src="//t1.daumcdn.net/kas/static/ba.min.js" async></script>
+                    </div>
+                </section>
+
                 <div class="section-card">
                     <div class="section-header indigo">
                         <div class="section-icon">🔍</div>
