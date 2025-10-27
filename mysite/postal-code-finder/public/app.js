@@ -182,18 +182,8 @@
     }
   }
 
-  function saveApiBase() {
-    const input = document.getElementById('apiBaseInput');
-    const val = (input?.value || '').trim();
-    if (!val) {
-      window.localStorage.removeItem('API_BASE');
-      alert('API 주소가 비어 있어 기본 규칙으로 복원합니다.');
-    } else {
-      window.localStorage.setItem('API_BASE', val);
-      alert(`API 주소를 저장했습니다:\n${val}\n페이지를 새로고침합니다.`);
-    }
-    window.location.reload();
-  }
+  // API 설정 저장 함수 제거됨 (자동 감지 사용)
+  // 개발자용 수동 설정: localStorage.setItem('API_BASE', 'http://your-api-url/api')
 
   
   // 라벨 관련 전역 변수
@@ -1163,16 +1153,7 @@
   // Event wiring
   document.addEventListener('DOMContentLoaded', () => {
     // (removed) overly aggressive CSS cleanup that could remove required styles
-    // API 바 초기화
-    const apiInput = document.getElementById('apiBaseInput');
-    if (apiInput) {
-      apiInput.value = API_BASE;
-    }
-    const btnSaveApi = document.getElementById('btnSaveApiBase');
-    if (btnSaveApi) btnSaveApi.addEventListener('click', saveApiBase);
-    const btnCheckApi = document.getElementById('btnCheckApi');
-    if (btnCheckApi) btnCheckApi.addEventListener('click', checkApiHealth);
-    // 자동 연결 확인
+    // API 연결 상태 자동 확인
     checkApiHealth();
     // Tabs
     document.querySelectorAll('.tab').forEach(btn => {

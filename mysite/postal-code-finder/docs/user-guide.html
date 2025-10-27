@@ -413,6 +413,7 @@
             <a href="#features">주요 기능</a>
             <a href="#faq">자주 묻는 질문</a>
             <a href="#troubleshooting">문제 해결</a>
+            <a href="#developer">개발자 설정</a>
         </div>
     </nav>
 
@@ -465,25 +466,21 @@
 │  업로드하여 우편번호를 자동으로...   │
 └─────────────────────────────────────┘</pre>
 
-                <h3>2단계: API 연결 확인하기</h3>
-                <p>화면 상단에 <strong>API 주소</strong> 입력란이 있습니다.</p>
+                <h3>2단계: API 연결 상태 확인하기</h3>
+                <p>화면 <strong>우측 하단</strong>에 API 연결 상태가 자동으로 표시됩니다.</p>
 
-                <h4>API 주소란?</h4>
+                <h4>연결 상태 확인</h4>
+                <p>페이지가 로드되면 자동으로 서버 연결을 확인합니다:</p>
                 <ul>
-                    <li>우편번호를 찾아주는 서버의 위치입니다</li>
-                    <li>자동으로 설정되므로 <strong>대부분 건드릴 필요가 없습니다</strong></li>
+                    <li>🟢 <strong>초록색 점</strong> + "연결됨" → 정상 작동 중</li>
+                    <li>🔴 <strong>빨간색 점</strong> + "연결 실패" → 문제 발생 (<a href="#troubleshooting">문제 해결</a> 참조)</li>
+                    <li>⚪ <strong>회색 점 (깜빡임)</strong> → 연결 확인 중</li>
                 </ul>
 
-                <h4>연결 확인하기</h4>
-                <ol>
-                    <li><strong>연결 확인</strong> 버튼을 클릭합니다</li>
-                    <li>상태 표시가 녹색 점으로 바뀌면 정상입니다
-                        <ul>
-                            <li>✅ 녹색 점 + "연결됨" → 정상</li>
-                            <li>❌ 빨간 점 + "연결 실패" → 문제 있음</li>
-                        </ul>
-                    </li>
-                </ol>
+                <div class="callout callout-info">
+                    <p><strong>💡 참고:</strong> API 연결은 자동으로 설정됩니다. 일반 사용자는 별도 설정이 필요 없습니다.</p>
+                    <p>개발자 또는 자체 서버 사용자는 <a href="#developer">개발자 설정</a> 섹션을 참조하세요.</p>
+                </div>
             </section>
 
             <hr>
@@ -960,6 +957,114 @@
                         <ul><li>크롬 권장</li></ul>
                     </li>
                 </ol>
+            </section>
+
+            <hr>
+
+            <section id="developer">
+                <h2>⚙️ 개발자 설정</h2>
+
+                <div class="callout callout-warning">
+                    <p><strong>이 섹션은 개발자 및 고급 사용자를 위한 것입니다.</strong></p>
+                    <p>일반 사용자는 이 설정이 필요하지 않습니다. 자동으로 연결됩니다.</p>
+                </div>
+
+                <h3>API 주소 커스터마이징</h3>
+                <p>로컬 개발 환경이나 자체 서버를 사용하는 경우, API 주소를 수동으로 설정할 수 있습니다.</p>
+
+                <h4>방법 1: 브라우저 콘솔 (개발자 도구)</h4>
+                <div class="callout callout-success">
+                    <p><strong>1. 개발자 도구 열기</strong></p>
+                    <ul>
+                        <li>Windows/Linux: <code>F12</code> 또는 <code>Ctrl + Shift + I</code></li>
+                        <li>Mac: <code>Cmd + Option + I</code></li>
+                    </ul>
+                </div>
+
+                <div class="code-block">
+                    <p class="code-title">2. Console 탭에서 다음 명령 입력:</p>
+                    <pre><code>// API 주소 설정
+localStorage.setItem('API_BASE', 'http://localhost:3001/api');
+
+// 페이지 새로고침
+location.reload();</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <p class="code-title">설정 확인:</p>
+                    <pre><code>// 현재 설정된 API 주소 확인
+localStorage.getItem('API_BASE');</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <p class="code-title">설정 초기화 (자동 감지로 복원):</p>
+                    <pre><code>// API 설정 제거
+localStorage.removeItem('API_BASE');
+
+// 페이지 새로고침
+location.reload();</code></pre>
+                </div>
+
+                <h4>방법 2: URL 파라미터</h4>
+                <p>URL에 파라미터를 추가하여 일시적으로 API 주소를 변경할 수 있습니다:</p>
+
+                <div class="code-block">
+                    <pre><code>// 예시: 커스텀 API 서버 사용
+https://yoursite.com/?apiBase=http://localhost:3001/api</code></pre>
+                </div>
+
+                <h3>자동 API 감지 로직</h3>
+                <p>시스템은 다음 우선순위로 API 주소를 결정합니다:</p>
+                <ol>
+                    <li><strong>localStorage.API_BASE</strong> - 수동 설정 (최우선)</li>
+                    <li><strong>URL 파라미터</strong> - ?apiBase=... (두 번째)</li>
+                    <li><strong>자동 감지</strong> - 현재 도메인 기준 (기본값)
+                        <ul>
+                            <li>localhost 환경: <code>http://localhost:3001/api</code></li>
+                            <li>프로덕션 환경: <code>/api</code> (상대 경로)</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h3>연결 상태 확인</h3>
+                <p>화면 우측 하단의 상태 표시로 API 연결 상태를 확인할 수 있습니다:</p>
+                <ul>
+                    <li>🟢 초록색 점: 정상 연결됨</li>
+                    <li>🔴 빨간색 점: 연결 실패</li>
+                    <li>⚪ 회색 점 (깜빡임): 연결 확인 중</li>
+                </ul>
+
+                <h3>로컬 개발 환경 설정</h3>
+
+                <h4>백엔드 서버 시작</h4>
+                <div class="code-block">
+                    <p class="code-title">터미널/명령 프롬프트:</p>
+                    <pre><code>cd backend
+npm install
+npm run dev</code></pre>
+                </div>
+
+                <h4>프론트엔드 접속</h4>
+                <p>브라우저에서 <code>http://localhost:3001</code> 접속</p>
+                <p>또는 정적 파일 서버로 <code>public/</code> 폴더 제공</p>
+
+                <h3>환경 변수 설정</h3>
+                <p><code>backend/.env</code> 파일에서 설정:</p>
+                <div class="code-block">
+                    <pre><code>JUSO_API_KEY=your_juso_api_key_here
+PORT=3001
+FRONTEND_URL=http://localhost:3001
+NODE_ENV=development</code></pre>
+                </div>
+
+                <div class="callout callout-info">
+                    <p><strong>💡 참고:</strong></p>
+                    <ul>
+                        <li>API 주소 변경 후에는 반드시 페이지를 새로고침해야 합니다.</li>
+                        <li>CORS 오류가 발생하면 백엔드 서버의 CORS 설정을 확인하세요.</li>
+                        <li>자세한 개발 가이드는 <a href="../CLAUDE.md">CLAUDE.md</a>를 참조하세요.</li>
+                    </ul>
+                </div>
             </section>
 
             <hr>
