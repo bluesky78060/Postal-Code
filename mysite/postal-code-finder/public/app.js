@@ -979,11 +979,14 @@
     if (appContainer) appContainer.setAttribute('inert', '');
     if (modal) {
       lastFocusedElement = (document.activeElement && document.activeElement.focus) ? document.activeElement : null;
-      modal.classList.add('active');
+      // aria-hidden을 포커스 이동 전에 먼저 설정
       modal.setAttribute('aria-hidden', 'false');
-      // 첫 포커스 대상
-      const first = document.getElementById('btnModalClose') || modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      if (first && first.focus) first.focus();
+      modal.classList.add('active');
+      // 포커스 이동을 다음 프레임으로 지연하여 aria-hidden이 먼저 적용되도록 함
+      requestAnimationFrame(() => {
+        const first = document.getElementById('btnModalClose') || modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (first && first.focus) first.focus();
+      });
       // 탭 포커스 트랩
       modalKeydownHandler = (e) => {
         if (e.key !== 'Tab') return;
