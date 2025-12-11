@@ -54,6 +54,29 @@
             </button>
         </nav>
 
+        <div class="sample-type-nav">
+            <button type="button" class="sample-type-btn" data-type="토양" title="토양">
+                <span class="type-icon">🌱</span>
+                <span class="type-text">토양</span>
+            </button>
+            <button type="button" class="sample-type-btn" data-type="물" title="물">
+                <span class="type-icon">💧</span>
+                <span class="type-text">물</span>
+            </button>
+            <button type="button" class="sample-type-btn" data-type="잔류농약" title="잔류농약">
+                <span class="type-icon">🧫</span>
+                <span class="type-text">잔류농약</span>
+            </button>
+            <button type="button" class="sample-type-btn" data-type="가축분뇨퇴비" title="가축분뇨퇴비">
+                <span class="type-icon">🐄</span>
+                <span class="type-text">가축분뇨퇴비</span>
+            </button>
+            <button type="button" class="sample-type-btn" data-type="기타" title="기타">
+                <span class="type-icon">📦</span>
+                <span class="type-text">기타</span>
+            </button>
+        </div>
+
         <div class="sidebar-actions">
             <button type="button" id="exportBtn" class="action-btn">
                 <span class="action-icon">📥</span>
@@ -89,108 +112,137 @@
     <main class="main-content">
         <!-- 시료 접수 폼 뷰 -->
         <div id="formView" class="view active">
-            <div class="view-header">
-                <h2>시료 접수</h2>
-                <p class="view-desc">새로운 시료를 접수합니다</p>
-            </div>
 
             <form id="sampleForm" class="sample-form">
-                <!-- 기본 정보 카드 -->
-                <div class="form-card">
-                    <div class="card-header">
-                        <span class="card-icon">👤</span>
-                        <h3>기본 정보</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label for="receptionNumber">접수번호</label>
-                                <input type="text" id="receptionNumber" name="receptionNumber" readonly
-                                    placeholder="자동 생성">
-                            </div>
-                            <div class="form-field">
-                                <label for="date">접수일자</label>
-                                <input type="date" id="date" name="date" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label for="name">성명 <span class="required">*</span></label>
-                                <input type="text" id="name" name="name" required placeholder="민원인 성명">
-                            </div>
-                            <div class="form-field">
-                                <label for="phoneNumber">전화번호 <span class="required">*</span></label>
-                                <input type="tel" id="phoneNumber" name="phoneNumber" required
-                                    placeholder="010-0000-0000">
-                            </div>
-                        </div>
-                        <div class="form-row single">
-                            <div class="form-field full">
-                                <label for="address">주소</label>
-                                <div class="address-group">
-                                    <div class="address-row">
-                                        <input type="text" id="addressPostcode" name="addressPostcode" readonly
-                                            placeholder="우편번호" class="postcode-input">
-                                        <button type="button" id="searchAddressBtn" class="btn-search">
-                                            🔍 주소 검색
-                                        </button>
-                                    </div>
-                                    <input type="text" id="addressRoad" name="addressRoad" readonly
-                                        placeholder="도로명 주소">
-                                    <input type="text" id="addressDetail" name="addressDetail" placeholder="상세 주소 입력">
+                <div class="form-two-column">
+                    <!-- 왼쪽: 기본 정보 + 시료 정보 -->
+                    <div class="form-left-column">
+                        <!-- 기본 정보 카드 -->
+                        <div class="form-card">
+                            <div class="card-header">
+                                <span class="card-icon">👤</span>
+                                <h3>기본 정보</h3>
+                                <div class="reception-method-group">
+                                    <button type="button" class="reception-method-btn" data-method="우편" title="우편">
+                                        <span class="method-icon">📮</span>
+                                    </button>
+                                    <button type="button" class="reception-method-btn" data-method="이메일" title="이메일">
+                                        <span class="method-icon">📧</span>
+                                    </button>
+                                    <button type="button" class="reception-method-btn" data-method="팩스" title="팩스">
+                                        <span class="method-icon">📠</span>
+                                    </button>
+                                    <button type="button" class="reception-method-btn" data-method="직접방문" title="직접방문">
+                                        <span class="method-icon">🚶</span>
+                                    </button>
                                 </div>
-                                <input type="hidden" id="address" name="address">
+                                <input type="hidden" id="receptionMethod" name="receptionMethod" required>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-field">
+                                        <label for="receptionNumber">접수번호</label>
+                                        <input type="text" id="receptionNumber" name="receptionNumber"
+                                            placeholder="자동 생성">
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="date">접수일자</label>
+                                        <input type="date" id="date" name="date" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-field">
+                                        <label for="name">성명 <span class="required">*</span></label>
+                                        <input type="text" id="name" name="name" required placeholder="민원인 성명" autocomplete="name">
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="phoneNumber">전화번호 <span class="required">*</span></label>
+                                        <input type="tel" id="phoneNumber" name="phoneNumber" required
+                                            placeholder="010-0000-0000" autocomplete="tel">
+                                    </div>
+                                </div>
+                                <div class="form-row single">
+                                    <div class="form-field full">
+                                        <label for="addressPostcode">주소</label>
+                                        <div class="address-group">
+                                            <div class="address-row">
+                                                <input type="text" id="addressPostcode" name="addressPostcode" readonly
+                                                    placeholder="우편번호" class="postcode-input" autocomplete="postal-code">
+                                                <button type="button" id="searchAddressBtn" class="btn-search">
+                                                    🔍 주소 검색
+                                                </button>
+                                            </div>
+                                            <input type="text" id="addressRoad" name="addressRoad" readonly
+                                                placeholder="도로명 주소" autocomplete="street-address">
+                                            <input type="text" id="addressDetail" name="addressDetail" placeholder="상세 주소 입력" autocomplete="address-line2">
+                                        </div>
+                                        <input type="hidden" id="address" name="address">
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <!-- 시료 정보 카드 -->
-                <div class="form-card">
-                    <div class="card-header">
-                        <span class="card-icon">🧪</span>
-                        <h3>시료 정보</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label for="sampleType">시료종류 <span class="required">*</span></label>
-                                <select id="sampleType" name="sampleType" required>
-                                    <option value="">선택하세요</option>
-                                    <option value="토양">🌱 토양</option>
-                                    <option value="물">💧 물</option>
-                                    <option value="잔류농약">🧫 잔류농약</option>
-                                    <option value="가축분뇨퇴비">🐄 가축분뇨퇴비</option>
-                                    <option value="기타">📦 기타</option>
-                                </select>
+                        <!-- 시료 정보 카드 -->
+                        <div class="form-card">
+                            <div class="card-header">
+                                <span class="card-icon">🧪</span>
+                                <h3>시료 정보</h3>
                             </div>
-                            <div class="form-field">
-                                <label for="subCategory">하위 카테고리</label>
-                                <select id="subCategory" name="subCategory" disabled>
-                                    <option value="">상위 카테고리를 먼저 선택하세요</option>
-                                </select>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-field">
+                                        <label for="subCategory">구분</label>
+                                        <select id="subCategory" name="subCategory">
+                                            <option value="">선택하세요</option>
+                                            <option value="논">논</option>
+                                            <option value="밭">밭</option>
+                                            <option value="과수">과수</option>
+                                            <option value="시설">시설</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="purpose">목적 (용도) <span class="required">*</span></label>
+                                        <select id="purpose" name="purpose" required>
+                                            <option value="">선택하세요</option>
+                                            <option value="일반재배">🌾 일반재배</option>
+                                            <option value="무농약">🍃 무농약</option>
+                                            <option value="유기">♻️ 유기</option>
+                                            <option value="GAP">✅ GAP</option>
+                                            <option value="저탄소">🌱 저탄소</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-field full-width">
+                                        <label for="note">비고</label>
+                                        <input type="text" id="note" name="note" placeholder="추가 메모 사항을 입력하세요">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- 필지 정보 카드 -->
-                <div class="form-card">
-                    <div class="card-header">
-                        <span class="card-icon">🗺️</span>
-                        <h3>필지 정보</h3>
-                        <button type="button" id="addParcelBtn" class="btn-add-small">+ 필지 추가</button>
-                    </div>
-                    <div class="card-body">
-                        <div id="parcelsContainer" class="parcels-list">
-                            <!-- 필지가 동적으로 추가됩니다 -->
+                    <!-- 오른쪽: 필지 정보 -->
+                    <div class="form-right-column">
+                        <!-- 필지 정보 카드 -->
+                        <div class="form-card">
+                            <div class="card-header">
+                                <span class="card-icon">🗺️</span>
+                                <h3>필지 정보</h3>
+                                <button type="button" id="addParcelBtn" class="btn-add-small">+ 필지 추가</button>
+                            </div>
+                            <div class="card-body">
+                                <div id="parcelsContainer" class="parcels-list">
+                                    <!-- 필지가 동적으로 추가됩니다 -->
+                                </div>
+                                <div id="emptyParcels" class="empty-parcels">
+                                    <p>등록된 필지가 없습니다</p>
+                                    <button type="button" class="btn-add-parcel-empty">+ 첫 번째 필지 추가</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="parcelsData" name="parcelsData">
                         </div>
-                        <div id="emptyParcels" class="empty-parcels">
-                            <p>등록된 필지가 없습니다</p>
-                            <button type="button" class="btn-add-parcel-empty">+ 첫 번째 필지 추가</button>
-                        </div>
                     </div>
-                    <input type="hidden" id="parcelsData" name="parcelsData">
                 </div>
 
                 <!-- 폼 액션 -->
@@ -206,7 +258,7 @@
 
         <!-- 접수 목록 뷰 -->
         <div id="listView" class="view">
-            <div class="view-header">
+            <div class="view-header-top">
                 <div class="header-left">
                     <h2>접수 목록</h2>
                     <span class="record-count" id="recordCount">0건</span>
@@ -226,13 +278,16 @@
                             <th class="col-complete">완료</th>
                             <th>접수번호</th>
                             <th>접수일자</th>
+                            <th>구분</th>
+                            <th>목적(용도)</th>
                             <th>성명</th>
-                            <th>전화번호</th>
                             <th>주소</th>
-                            <th>시료종류</th>
-                            <th>하위/작물</th>
-                            <th>면적(m²)</th>
                             <th>필지 주소</th>
+                            <th>작물명</th>
+                            <th>면적(m²)</th>
+                            <th>전화번호</th>
+                            <th>수령 방법</th>
+                            <th class="col-note">비고</th>
                             <th class="col-action">관리</th>
                         </tr>
                     </thead>
@@ -318,6 +373,29 @@
             </div>
             <div class="modal-body">
                 <div id="daumPostcodeContainer" class="postcode-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 지역 선택 모달 (중복 리 이름) -->
+    <div id="regionSelectionModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-medium">
+            <div class="modal-header">
+                <h3>🗺️ 지역 선택</h3>
+                <button type="button" class="modal-close" id="closeRegionModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="region-selection-info">
+                    <p><strong id="duplicateVillageName"></strong>은(는) 여러 지역에 존재합니다.</p>
+                    <p>해당하는 지역을 선택해주세요:</p>
+                </div>
+                <div class="region-options" id="regionOptions">
+                    <!-- 지역 옵션이 동적으로 추가됩니다 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="cancelRegionSelection" class="btn-cancel">취소</button>
             </div>
         </div>
     </div>
